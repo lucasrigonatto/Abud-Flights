@@ -27,12 +27,15 @@ export default async function MonitorsPage() {
   });
   return (
     <div className="stack">
-      <div className="row spread">
-        <h1>Meus monitoramentos</h1>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">Sua conta</p>
+          <h1>Meus monitoramentos</h1>
+        </div>
         <Link className="btn" href="/monitoramentos/novo">
           Novo monitoramento
         </Link>
-      </div>
+      </header>
       {monitors.length === 0 ? (
         <section className="card stack">
           <p>Você ainda não acompanha nenhuma viagem.</p>

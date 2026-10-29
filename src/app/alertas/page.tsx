@@ -14,7 +14,12 @@ export default async function AlertsPage() {
   const outbox = notifications.filter((notification) => notification.channel === "EMAIL");
   return (
     <div className="stack">
-      <h1>Alertas</h1>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">Preço-alvo</p>
+          <h1>Alertas</h1>
+        </div>
+      </header>
       <section className="stack">
         <h2>No site</h2>
         {inApp.length === 0 ? <p className="muted">Nenhum alerta no site.</p> : null}

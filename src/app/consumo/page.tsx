@@ -49,7 +49,12 @@ export default async function ConsumptionPage() {
   });
   return (
     <div className="stack">
-      <h1>Consumo</h1>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">Simulador</p>
+          <h1>Consumo</h1>
+        </div>
+      </header>
       <p className="muted">
         Os valores abaixo são custo de demonstração do simulador, em centavos de USD, não uma fatura. Incluem chamadas cobradas, cache, falhas e repetições.
       </p>

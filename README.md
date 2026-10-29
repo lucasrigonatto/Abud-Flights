@@ -31,6 +31,7 @@ A senha do Postgres no Compose (`abud` / `abud`) é só para uso local.
 - O preço de dois passageiros é o total da oferta para dois passageiros.
 - Alerta de preço-alvo no site. Sem servidor de e-mail, a cópia fica na caixa de saída.
 - Painel de consumo com chamadas, cache, falhas, repetições e custo de demonstração.
+- Mapa da rota com OpenStreetMap: origem, destino, alternativas escolhidas, opções próximas e conexão quando a oferta tem escala.
 - Amostra pequena mostra “Histórico insuficiente.”
 
 ## Fora desta versão

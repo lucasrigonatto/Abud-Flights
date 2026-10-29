@@ -151,7 +151,12 @@ export default async function MonitorDetailPage({
         {charged === 1 ? "" : "s"} cobrada{charged === 1 ? "" : "s"} e {failures} falha{failures === 1 ? "" : "s"}.
       </p>
 
-      <OfferList rows={latestOffers} now={new Date()} />
+      <OfferList
+        rows={latestOffers}
+        now={new Date()}
+        airports={AIRPORTS}
+        route={{ origins: monitor.origins, destinations: monitor.destinations }}
+      />
       <HistoryPanel rows={currentObservations} filtersVersion={monitor.filtersVersion} title="Histórico destes critérios" />
       <p className="muted">
         Amostra compartilhada da rota {monitor.origins[0]} → {monitor.destinations[0]}, sem identificar quem pesquisou: {sharedSample} observações de demonstração.
@@ -262,10 +267,17 @@ export default async function MonitorDetailPage({
       </div>
 
       {monitor.status === "ACTIVE" || monitor.status === "PAUSED" ? (
-        <section className="card stack">
+        <section className="stack">
           <h2>Alterar filtros</h2>
           <p className="muted">Mudar a viagem cria uma versão nova. O histórico anterior continua guardado e não é misturado com o novo.</p>
-          <TripForm action={updateMonitorAction} airports={AIRPORTS} defaults={defaults} mode="monitor" submitLabel="Salvar filtros" />
+          <TripForm
+            key={`${monitor.id}-${monitor.filtersVersion}`}
+            action={updateMonitorAction}
+            airports={AIRPORTS}
+            defaults={defaults}
+            mode="monitor"
+            submitLabel="Salvar filtros"
+          />
         </section>
       ) : null}
       <Limitations />

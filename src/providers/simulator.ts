@@ -64,6 +64,53 @@ function segment(query: ProviderQuery, index: number, departDate: string, durati
   };
 }
 
+const HUBS = ["GRU", "MAD", "CDG", "FRA", "GIG"];
+
+function connectionHub(query: ProviderQuery): string | null {
+  return HUBS.find((code) => code !== query.origin && code !== query.destination) ?? null;
+}
+
+function chainedSegment(origin: string, destination: string, departLocal: string, duration: number, index: number): Segment {
+  const seed = fnv1a(`${origin}${destination}${departLocal}${index}`);
+  const airline = AIRLINES[seed % AIRLINES.length];
+  return {
+    origin,
+    destination,
+    airline: airline.code,
+    airlineName: airline.name,
+    flightNumber: `${airline.code}${100 + (seed % 800)}`,
+    departLocal,
+    arriveLocal: addMinutes(departLocal, duration),
+  };
+}
+
+function connectingOffer(query: ProviderQuery, perPerson: number, now: Date): ProviderOffer | null {
+  const hub = connectionHub(query);
+  if (!hub) return null;
+  const outboundStart = localDateTime(query.departDate, 7 * 60);
+  const first = chainedSegment(query.origin, hub, outboundStart, 180, 4);
+  const second = chainedSegment(hub, query.destination, addMinutes(first.arriveLocal, 80), 520, 5);
+  const returnStart = localDateTime(query.returnDate, 9 * 60);
+  const third = chainedSegment(query.destination, hub, returnStart, 500, 6);
+  const fourth = chainedSegment(hub, query.origin, addMinutes(third.arriveLocal, 80), 190, 7);
+  return {
+    providerOfferId: `sim-2-${query.origin}-${query.destination}-${query.departDate}-${query.returnDate}-${query.adults}-${query.currency}`,
+    priceKind: "DEMONSTRATION",
+    totalAmountMinor: partyTotal(perPerson + 40_000, query),
+    currency: query.currency,
+    market: query.market,
+    adults: query.adults,
+    childAges: [...query.childAges],
+    cabin: query.cabin,
+    baggage: { known: true, included: false, checkedBags: 0 },
+    expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+    link: `/ofertas-simuladas/sim-2-${query.origin}-${query.destination}`,
+    stops: 1,
+    durationMinutes: 780,
+    segments: [first, second, third, fourth],
+  };
+}
+
 function buildOffers(query: ProviderQuery, now: Date): ProviderOffer[] {
   const perPerson = perPersonMinor(query);
   const knownBags = query.checkedBags ?? 0;
@@ -111,6 +158,8 @@ function buildOffers(query: ProviderQuery, now: Date): ProviderOffer[] {
       ],
     },
   ];
+  const connection = connectingOffer(query, perPerson, now);
+  if (connection) offers.push(connection);
   return offers.filter((offer) => offer.stops <= query.maxStops && offer.durationMinutes <= query.maxDurationMinutes);
 }
 
