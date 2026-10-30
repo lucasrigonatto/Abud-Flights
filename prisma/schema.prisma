@@ -1,0 +1,455 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  currency       String   @default("BRL")
+  market         String   @default("BR")
+  quietStartHour Int?     @map("quiet_start_hour")
+  quietEndHour   Int?     @map("quiet_end_hour")
+  digestEnabled  Boolean  @default(true) @map("digest_enabled")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  sessions         Session[]
+  monitors         Monitor[]
+  searchRuns       SearchRun[]
+  notifications    Notification[]
+  providerRequests ProviderRequest[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Airport {
+  iata      String  @id
+  name      String
+  city      String
+  country   String
+  latitude  Decimal @db.Decimal(9, 6)
+  longitude Decimal @db.Decimal(9, 6)
+  timezone  String
+
+  @@map("airports")
+}
+
+enum MonitorStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  COMPLETED
+
+  @@map("monitor_status")
+}
+
+enum DateMode {
+  FIXED
+  FLEX
+
+  @@map("date_mode")
+}
+
+enum Cabin {
+  ECONOMY
+  PREMIUM_ECONOMY
+  BUSINESS
+  FIRST
+
+  @@map("cabin")
+}
+
+enum BudgetScope {
+  TOTAL
+  PER_PERSON
+
+  @@map("budget_scope")
+}
+
+enum RunStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  PARTIAL
+  NO_OFFERS
+
+  @@map("run_status")
+}
+
+enum PriceKind {
+  DEMONSTRATION
+  LIVE_CURRENT
+  LIVE_INDICATIVE
+
+  @@map("price_kind")
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+
+  @@map("notification_channel")
+}
+
+enum NotificationStatus {
+  DELIVERED
+  RECORDED
+
+  @@map("notification_status")
+}
+
+enum AlertType {
+  TARGET_PRICE
+  PERCENT_DROP
+  NEW_LOW
+  ALTERNATE_SAVINGS
+  DAILY_DIGEST
+
+  @@map("alert_type")
+}
+
+model Monitor {
+  id                  String        @id @default(cuid())
+  userId              String        @map("user_id")
+  name                String
+  status              MonitorStatus @default(ACTIVE)
+  origins             String[]
+  destinations        String[]
+  dateMode            DateMode      @map("date_mode")
+  departDate          DateTime      @db.Date @map("depart_date")
+  returnDate          DateTime      @db.Date @map("return_date")
+  flexDays            Int           @map("flex_days")
+  adults              Int
+  childAges           Int[]         @default([]) @map("child_ages")
+  cabin               Cabin
+  checkedBags         Int?          @map("checked_bags")
+  maxStops            Int           @map("max_stops")
+  maxDurationMinutes  Int           @map("max_duration_minutes")
+  currency            String
+  market              String
+  monitorUntil        DateTime      @map("monitor_until")
+  intervalHours       Int           @default(12) @map("interval_hours")
+  nextRunAt           DateTime      @map("next_run_at")
+  pendingScheduledFor DateTime?     @map("pending_scheduled_for")
+  filtersVersion      Int           @default(1) @map("filters_version")
+  explorationCursor   Int           @default(0) @map("exploration_cursor")
+  failureCount        Int           @default(0) @map("failure_count")
+  extraBagAmountMinor Int?          @map("extra_bag_amount_minor")
+  lockedAt            DateTime?     @map("locked_at")
+  lockedBy            String?       @map("locked_by")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revisions     MonitorRevision[]
+  searches      MonitorSearch[]
+  runs          SearchRun[]
+  alertRules    AlertRule[]
+  notifications Notification[]
+  groundCosts   GroundCost[]
+
+  @@index([userId])
+  @@index([status, nextRunAt])
+  @@map("monitors")
+}
+
+model MonitorRevision {
+  id                 String      @id @default(cuid())
+  monitorId          String      @map("monitor_id")
+  filtersVersion     Int         @map("filters_version")
+  origins            String[]
+  destinations       String[]
+  dateMode           DateMode    @map("date_mode")
+  departDate         DateTime    @db.Date @map("depart_date")
+  returnDate         DateTime    @db.Date @map("return_date")
+  flexDays           Int         @map("flex_days")
+  adults             Int
+  childAges          Int[]       @default([]) @map("child_ages")
+  cabin              Cabin
+  checkedBags        Int?        @map("checked_bags")
+  currency           String
+  market             String
+  maxStops           Int         @map("max_stops")
+  maxDurationMinutes Int         @map("max_duration_minutes")
+  createdAt          DateTime    @default(now()) @map("created_at")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@unique([monitorId, filtersVersion])
+  @@map("monitor_revisions")
+}
+
+model SearchDefinition {
+  id                 String   @id @default(cuid())
+  key                String   @unique
+  provider           String
+  providerVersion    String   @map("provider_version")
+  origin             String
+  destination        String
+  departDate         DateTime @db.Date @map("depart_date")
+  returnDate         DateTime @db.Date @map("return_date")
+  adults             Int
+  childAges          Int[]    @default([]) @map("child_ages")
+  cabin              Cabin
+  checkedBags        Int?     @map("checked_bags")
+  currency           String
+  market             String
+  maxStops           Int      @map("max_stops")
+  maxDurationMinutes Int      @map("max_duration_minutes")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  monitorSearches MonitorSearch[]
+  observations    PriceObservation[]
+  requests        ProviderRequest[]
+
+  @@map("search_definitions")
+}
+
+model MonitorSearch {
+  id                 String @id @default(cuid())
+  monitorId          String @map("monitor_id")
+  searchDefinitionId String @map("search_definition_id")
+  filtersVersion     Int    @map("filters_version")
+
+  monitor          Monitor          @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  searchDefinition SearchDefinition @relation(fields: [searchDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([monitorId, searchDefinitionId, filtersVersion])
+  @@index([monitorId, filtersVersion])
+  @@map("monitor_searches")
+}
+
+model SearchRun {
+  id                  String    @id @default(cuid())
+  monitorId           String?   @map("monitor_id")
+  userId              String?   @map("user_id")
+  scheduledFor        DateTime? @map("scheduled_for")
+  filtersVersion      Int?      @map("filters_version")
+  requestKey          String?   @unique @map("request_key")
+  status              RunStatus
+  combinationsPlanned Int       @default(0) @map("combinations_planned")
+  combinationsQueried Int       @default(0) @map("combinations_queried")
+  combinationsSkipped Int       @default(0) @map("combinations_skipped")
+  partial             Boolean   @default(false)
+  datesPassed         Boolean   @default(false) @map("dates_passed")
+  hadProviderFailure  Boolean   @default(false) @map("had_provider_failure")
+  stoppedByBudget     Boolean   @default(false) @map("stopped_by_budget")
+  nextCursor          Int       @default(0) @map("next_cursor")
+  offerCount          Int       @default(0) @map("offer_count")
+  startedAt           DateTime  @default(now()) @map("started_at")
+  finishedAt          DateTime? @map("finished_at")
+  errorCode           String?   @map("error_code")
+  errorMessage        String?   @map("error_message")
+  attempt             Int       @default(1)
+
+  monitor      Monitor?           @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  user         User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  observations PriceObservation[]
+  requests     ProviderRequest[]
+
+  @@unique([monitorId, scheduledFor, filtersVersion])
+  @@index([userId])
+  @@index([monitorId])
+  @@map("search_runs")
+}
+
+model ProviderRequest {
+  id                 String   @id @default(cuid())
+  searchRunId        String   @map("search_run_id")
+  searchDefinitionId String?  @map("search_definition_id")
+  userId             String?  @map("user_id")
+  monitorId          String?  @map("monitor_id")
+  provider           String
+  definitionKey      String?  @map("definition_key")
+  attempt            Int
+  latencyMs          Int      @map("latency_ms")
+  cacheHit           Boolean  @default(false) @map("cache_hit")
+  charged            Boolean
+  costMinor          Int      @default(0) @map("cost_minor")
+  costCurrency       String   @default("USD") @map("cost_currency")
+  status             String
+  errorCode          String?  @map("error_code")
+  offersJson         Json?    @map("offers_json")
+  createdAt          DateTime @map("created_at")
+
+  searchRun        SearchRun         @relation(fields: [searchRunId], references: [id], onDelete: Cascade)
+  searchDefinition SearchDefinition? @relation(fields: [searchDefinitionId], references: [id], onDelete: SetNull)
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([definitionKey, createdAt])
+  @@index([monitorId])
+  @@map("provider_requests")
+}
+
+model Itinerary {
+  id              String @id @default(cuid())
+  key             String @unique
+  stops           Int
+  durationMinutes Int    @map("duration_minutes")
+
+  segments     FlightSegment[]
+  observations PriceObservation[]
+
+  @@map("itineraries")
+}
+
+model FlightSegment {
+  id           String @id @default(cuid())
+  itineraryId  String @map("itinerary_id")
+  sequence     Int
+  origin       String
+  destination  String
+  airline      String
+  airlineName  String @map("airline_name")
+  flightNumber String @map("flight_number")
+  departLocal  String @map("depart_local")
+  arriveLocal  String @map("arrive_local")
+
+  itinerary Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+
+  @@unique([itineraryId, sequence])
+  @@map("flight_segments")
+}
+
+model PriceObservation {
+  id                   String    @id @default(cuid())
+  dedupKey             String    @unique @map("dedup_key")
+  collectedAt          DateTime  @map("collected_at")
+  sourceCollectedAt    DateTime  @map("source_collected_at")
+  provider             String
+  providerVersion      String    @map("provider_version")
+  priceKind            PriceKind @map("price_kind")
+  searchDefinitionId   String    @map("search_definition_id")
+  searchRunId          String    @map("search_run_id")
+  monitorId            String?   @map("monitor_id")
+  filtersVersion       Int?      @map("filters_version")
+  userId               String?   @map("user_id")
+  origin               String
+  destination          String
+  departDate           DateTime  @db.Date @map("depart_date")
+  returnDate           DateTime  @db.Date @map("return_date")
+  itineraryId          String    @map("itinerary_id")
+  stops                Int
+  adults               Int
+  childAges            Int[]     @default([]) @map("child_ages")
+  cabin                Cabin
+  baggageKnown         Boolean   @map("baggage_known")
+  baggageIncluded      Boolean?  @map("baggage_included")
+  checkedBags          Int?      @map("checked_bags")
+  totalAmountMinor     Int       @map("total_amount_minor")
+  currency             String
+  market               String
+  offerExpiresAt       DateTime? @map("offer_expires_at")
+  providerOfferId      String?   @map("provider_offer_id")
+  providerLink         String?   @map("provider_link")
+  fxRate               Decimal?  @db.Decimal(18, 8) @map("fx_rate")
+  fxQuotedAt           DateTime? @map("fx_quoted_at")
+  convertedAmountMinor Int?      @map("converted_amount_minor")
+  convertedCurrency    String?   @map("converted_currency")
+  fromCache            Boolean   @default(false) @map("from_cache")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  searchDefinition SearchDefinition @relation(fields: [searchDefinitionId], references: [id], onDelete: Cascade)
+  searchRun        SearchRun        @relation(fields: [searchRunId], references: [id], onDelete: Cascade)
+  itinerary        Itinerary        @relation(fields: [itineraryId], references: [id], onDelete: Restrict)
+
+  @@index([monitorId, filtersVersion])
+  @@index([searchRunId])
+  @@index([userId])
+  @@map("price_observations")
+}
+
+model AlertRule {
+  id                String      @id @default(cuid())
+  monitorId         String      @map("monitor_id")
+  type              AlertType
+  targetAmountMinor Int         @map("target_amount_minor")
+  percentPoints     Int?        @map("percent_points")
+  minSavingsMinor   Int?        @map("min_savings_minor")
+  currency          String
+  scope             BudgetScope
+  active            Boolean     @default(true)
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  monitor       Monitor        @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@index([monitorId])
+  @@map("alert_rules")
+}
+
+model Notification {
+  id            String               @id @default(cuid())
+  dedupKey      String               @unique @map("dedup_key")
+  userId        String               @map("user_id")
+  monitorId     String               @map("monitor_id")
+  alertRuleId   String?              @map("alert_rule_id")
+  observationId String?              @map("observation_id")
+  channel       NotificationChannel
+  status        NotificationStatus
+  title         String
+  body          String
+  createdAt     DateTime             @default(now()) @map("created_at")
+  readAt        DateTime?            @map("read_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  monitor   Monitor    @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  alertRule AlertRule? @relation(fields: [alertRuleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([monitorId])
+  @@map("notifications")
+}
+
+model GroundCost {
+  id                  String @id @default(cuid())
+  monitorId           String @map("monitor_id")
+  airport             String
+  transferAmountMinor Int?   @map("transfer_amount_minor")
+  transferMinutes     Int?   @map("transfer_minutes")
+  lodgingAmountMinor  Int?   @map("lodging_amount_minor")
+  feesAmountMinor     Int?   @map("fees_amount_minor")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@unique([monitorId, airport])
+  @@map("ground_costs")
+}
+
+model RouteDailyStat {
+  id                 String    @id @default(cuid())
+  statDate           DateTime  @db.Date @map("stat_date")
+  origin             String
+  destination        String
+  cabin              Cabin
+  currency           String
+  baggageSignature   String    @map("baggage_signature")
+  passengerSignature String    @map("passenger_signature")
+  priceKind          PriceKind @map("price_kind")
+  minAmountMinor     Int       @map("min_amount_minor")
+  sampleCount        Int       @map("sample_count")
+  departureDates     String[]  @map("departure_dates")
+
+  @@unique([statDate, origin, destination, cabin, currency, baggageSignature, passengerSignature, priceKind], map: "route_daily_stats_identity")
+  @@map("route_daily_stats")
+}

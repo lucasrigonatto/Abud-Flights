@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: abud
+      POSTGRES_PASSWORD: abud
+      POSTGRES_DB: abud
+    ports:
+      - "5432:5432"
+    volumes:
+      - abud_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U abud -d abud"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://abud:abud@postgres:5432/abud?schema=public
+      COOKIE_SECURE: "false"
+      WORKER_POLL_MS: "5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && npx tsx prisma/seed.ts && npm run start"
+    restart: unless-stopped
+
+  worker:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://abud:abud@postgres:5432/abud?schema=public
+      WORKER_POLL_MS: "5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && npm run worker"
+    restart: unless-stopped
+
+volumes:
+  abud_pg:
