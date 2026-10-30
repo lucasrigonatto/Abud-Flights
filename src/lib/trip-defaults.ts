@@ -23,6 +23,11 @@ export type TripDefaults = {
   monitorUntil: string;
   targetAmount: string;
   budgetScope: string;
+  percentDrop: string;
+  minSavings: string;
+  newLow: boolean;
+  extraBagAmount: string;
+  groundCosts: Record<string, { transfer: string; lodging: string; fees: string; minutes: string }>;
   monitorId?: string;
 };
 
@@ -49,6 +54,11 @@ export function blankTrip(input: { currency: string; market: string; today: stri
     monitorUntil: shiftDate(input.today, 90),
     targetAmount: "8000,00",
     budgetScope: "TOTAL",
+    percentDrop: "",
+    minSavings: "",
+    newLow: true,
+    extraBagAmount: "",
+    groundCosts: {},
   };
 }
 

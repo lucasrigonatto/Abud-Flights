@@ -81,6 +81,11 @@ export async function createMonitorAction(_previous: ActionState, formData: Form
       monitorUntil: parsed.value.monitorUntil,
       targetAmountMinor: parsed.value.targetAmountMinor,
       budgetScope: parsed.value.budgetScope,
+      percentPoints: parsed.value.percentPoints,
+      minSavingsMinor: parsed.value.minSavingsMinor,
+      newLow: parsed.value.newLow,
+      extraBagAmountMinor: parsed.value.extraBagAmountMinor,
+      groundCosts: parsed.value.groundCosts,
     });
     monitorId = monitor.id;
   } catch (error) {
@@ -105,6 +110,11 @@ export async function updateMonitorAction(_previous: ActionState, formData: Form
       monitorUntil: parsed.value.monitorUntil,
       targetAmountMinor: parsed.value.targetAmountMinor,
       budgetScope: parsed.value.budgetScope,
+      percentPoints: parsed.value.percentPoints,
+      minSavingsMinor: parsed.value.minSavingsMinor,
+      newLow: parsed.value.newLow,
+      extraBagAmountMinor: parsed.value.extraBagAmountMinor,
+      groundCosts: parsed.value.groundCosts,
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Não foi possível salvar os filtros." };
@@ -142,7 +152,29 @@ export async function updatePreferencesAction(_previous: ActionState, formData: 
   const market = String(formData.get("market") ?? "BR").toUpperCase();
   if (!["BRL", "EUR", "USD"].includes(currency)) return { error: "Escolha BRL, EUR ou USD." };
   if (!/^[A-Z]{2}$/.test(market)) return { error: "Informe o mercado com duas letras." };
-  await prisma.user.update({ where: { id: user.id }, data: { currency, market } });
+  const startRaw = String(formData.get("quietStartHour") ?? "");
+  const endRaw = String(formData.get("quietEndHour") ?? "");
+  const quietStartHour = startRaw === "" ? null : Number(startRaw);
+  const quietEndHour = endRaw === "" ? null : Number(endRaw);
+  if ((quietStartHour === null) !== (quietEndHour === null)) {
+    return { error: "Informe o início e o fim do horário de silêncio, ou deixe os dois em branco." };
+  }
+  if (quietStartHour !== null && (!Number.isInteger(quietStartHour) || quietStartHour < 0 || quietStartHour > 23)) {
+    return { error: "O horário de silêncio usa horas de 0 a 23." };
+  }
+  if (quietEndHour !== null && (!Number.isInteger(quietEndHour) || quietEndHour < 0 || quietEndHour > 23)) {
+    return { error: "O horário de silêncio usa horas de 0 a 23." };
+  }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      currency,
+      market,
+      quietStartHour,
+      quietEndHour,
+      digestEnabled: formData.get("digestEnabled") === "on",
+    },
+  });
   return { error: "", saved: true };
 }
 

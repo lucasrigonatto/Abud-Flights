@@ -319,6 +319,15 @@ input:focus, select:focus, button:focus-visible, a:focus-visible {
   border-radius: 14px;
   padding: 0.75rem 0.9rem;
 }
+.reading-abaixo_da_faixa { background: var(--ok-bg); }
+.reading-dentro_da_faixa { background: var(--teal-soft); }
+.reading-acima_da_faixa { background: var(--danger-bg); }
+.chart-wrap { margin: 0; }
+.chart { width: 100%; height: auto; background: var(--bg-deep); border-radius: 14px; }
+.chart-line { fill: none; stroke: var(--teal); stroke-width: 3; }
+.chart-dot { fill: var(--clay); }
+td.gap { color: var(--muted); font-style: italic; }
+.check { display: flex; gap: 0.55rem; align-items: flex-start; }
 
 .limitations ul, .plain-list { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.45rem; }
 .plain-list { list-style: none; padding-left: 0; }

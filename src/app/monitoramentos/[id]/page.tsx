@@ -30,6 +30,7 @@ export default async function MonitorDetailPage({
     where: { id, userId: user.id },
     include: {
       alertRules: true,
+      groundCosts: true,
       revisions: { orderBy: { filtersVersion: "desc" } },
       runs: { orderBy: { startedAt: "desc" }, take: 12 },
       notifications: { orderBy: { createdAt: "desc" }, take: 12 },
@@ -63,7 +64,21 @@ export default async function MonitorDetailPage({
   const latestOffers = latest ? observations.filter((observation) => observation.searchRunId === latest.id) : [];
   const currentObservations = observations.filter((observation) => observation.filtersVersion === monitor.filtersVersion);
   const previous = observations.filter((observation) => observation.filtersVersion !== monitor.filtersVersion);
-  const rule = monitor.alertRules[0];
+  const rule = monitor.alertRules.find((item) => item.type === "TARGET_PRICE");
+  const percentRule = monitor.alertRules.find((item) => item.type === "PERCENT_DROP");
+  const savingsRule = monitor.alertRules.find((item) => item.type === "ALTERNATE_SAVINGS");
+  const newLowRule = monitor.alertRules.find((item) => item.type === "NEW_LOW");
+  const groundCosts = Object.fromEntries(
+    monitor.groundCosts.map((cost) => [
+      cost.airport,
+      {
+        transfer: cost.transferAmountMinor === null ? "" : minorToInput(cost.transferAmountMinor, monitor.currency),
+        lodging: cost.lodgingAmountMinor === null ? "" : minorToInput(cost.lodgingAmountMinor, monitor.currency),
+        fees: cost.feesAmountMinor === null ? "" : minorToInput(cost.feesAmountMinor, monitor.currency),
+        minutes: cost.transferMinutes === null ? "" : String(cost.transferMinutes),
+      },
+    ]),
+  );
   const today = isoDateInTimeZone(new Date());
   const planned = buildCombinations(criteriaFromMonitor(monitor), today).length;
   const sharedSample = shared.reduce((sum, stat) => sum + stat.sampleCount, 0);
@@ -89,6 +104,11 @@ export default async function MonitorDetailPage({
     monitorUntil: inclusiveUntilDate(monitor.monitorUntil),
     targetAmount: rule ? minorToInput(rule.targetAmountMinor, rule.currency) : "",
     budgetScope: rule?.scope ?? "TOTAL",
+    percentDrop: percentRule?.percentPoints ? String(percentRule.percentPoints) : "",
+    minSavings: savingsRule?.minSavingsMinor ? minorToInput(savingsRule.minSavingsMinor, savingsRule.currency) : "",
+    newLow: newLowRule?.active !== false,
+    extraBagAmount: monitor.extraBagAmountMinor === null ? "" : minorToInput(monitor.extraBagAmountMinor, monitor.currency),
+    groundCosts,
     monitorId: monitor.id,
   };
   const roundRequests = latest ? requests.filter((request) => request.searchRunId === latest.id) : [];
@@ -111,6 +131,9 @@ export default async function MonitorDetailPage({
         {rule ? (
           <p>
             Preço-alvo {formatMoney(rule.targetAmountMinor, rule.currency)} {budgetScopeLabel(rule.scope)}.
+            {percentRule?.percentPoints ? ` Queda de ${percentRule.percentPoints}%.` : ""}
+            {savingsRule?.minSavingsMinor ? ` Economia mínima no alternativo ${formatMoney(savingsRule.minSavingsMinor, savingsRule.currency)}.` : ""}
+            {newLowRule?.active === false ? "" : " Também avisa um novo menor preço."}
           </p>
         ) : null}
         {erro ? <p className="notice notice-danger">{erro}</p> : null}
@@ -147,7 +170,7 @@ export default async function MonitorDetailPage({
         <p className="notice">A primeira consulta ainda não terminou. O servidor executa a rodada mesmo sem esta página aberta.</p>
       )}
       <p className="muted">
-        Combinações previstas agora: {planned}. Cada rodada consulta até {LIMITS.maxCombinationsPerRound}. Nesta última tentativa houve {charged} chamada
+        Combinações previstas agora: {planned}. Cada rodada consulta até {LIMITS.maxCombinationsPerRound}. A primeira etapa confirma combinações que já têm preço de demonstração ou atual. A segunda usa o que sobra da cota para datas e aeroportos ainda pouco consultados. Sem um calendário indicativo autorizado, a busca não inventa preço indicativo. Quando a rodada não cobre todas as combinações, o resultado é o menor preço entre as opções consultadas. Nesta última tentativa houve {charged} chamada
         {charged === 1 ? "" : "s"} cobrada{charged === 1 ? "" : "s"} e {failures} falha{failures === 1 ? "" : "s"}.
       </p>
 
@@ -156,6 +179,19 @@ export default async function MonitorDetailPage({
         now={new Date()}
         airports={AIRPORTS}
         route={{ origins: monitor.origins, destinations: monitor.destinations }}
+        costSeed={{
+          requiredBags: monitor.checkedBags,
+          extraBagAmountMinor: monitor.extraBagAmountMinor,
+          primaryOrigin: monitor.origins[0],
+          primaryDestination: monitor.destinations[0],
+          costs: monitor.groundCosts.map((cost) => ({
+            airport: cost.airport,
+            transferMinor: cost.transferAmountMinor,
+            lodgingMinor: cost.lodgingAmountMinor,
+            feesMinor: cost.feesAmountMinor,
+            transferMinutes: cost.transferMinutes,
+          })),
+        }}
       />
       <HistoryPanel rows={currentObservations} filtersVersion={monitor.filtersVersion} title="Histórico destes critérios" />
       <p className="muted">

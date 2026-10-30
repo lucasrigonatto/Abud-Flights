@@ -13,6 +13,15 @@ export function flexDates(center: string, flexDays: number): string[] {
   return dates;
 }
 
+export function hourInTimeZone(date: Date, timeZone = "America/Sao_Paulo"): number {
+  const value = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+  return Number(value);
+}
+
 export function isoDateInTimeZone(date: Date, timeZone = "America/Sao_Paulo"): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone,

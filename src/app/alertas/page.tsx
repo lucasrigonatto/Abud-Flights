@@ -16,7 +16,7 @@ export default async function AlertsPage() {
     <div className="stack">
       <header className="page-head">
         <div>
-          <p className="eyebrow">Preço-alvo</p>
+          <p className="eyebrow">Preço-alvo, queda, menor preço e economia</p>
           <h1>Alertas</h1>
         </div>
       </header>

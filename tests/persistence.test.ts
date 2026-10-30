@@ -63,6 +63,11 @@ describeIf("persistência no Postgres", () => {
       monitorUntil: "2027-12-01",
       targetAmountMinor: 50_000_000,
       budgetScope: "TOTAL",
+      percentPoints: null,
+      minSavingsMinor: null,
+      newLow: true,
+      extraBagAmountMinor: null,
+      groundCosts: [],
     });
 
     const fresh = new PrismaClient();

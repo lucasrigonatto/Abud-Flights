@@ -3,6 +3,10 @@
 import { useMemo, useState } from "react";
 import { buildRouteMapModel } from "../lib/route-map";
 import type { AirportRecord } from "../lib/airports";
+import type { PriceKind } from "../domain/provider";
+import type { AirportCost } from "../domain/trip-cost";
+import { describeTripLink } from "../domain/trip-link";
+import { CostComparison, type CostOffer } from "./cost-comparison";
 import { RouteMap } from "./route-map";
 
 export type OfferCard = {
@@ -26,6 +30,10 @@ export type OfferCard = {
   expired: boolean;
   demonstration: boolean;
   providerLink: string | null;
+  durationMinutes: number;
+  baggageKnown: boolean;
+  baggageIncluded: boolean | null;
+  checkedBags: number | null;
   segments: Array<{
     origin: string;
     destination: string;
@@ -36,14 +44,35 @@ export type OfferCard = {
   }>;
 };
 
+function TripLink({ link, priceKind }: { link: string | null; priceKind: string }) {
+  const trip = describeTripLink(link, priceKind as PriceKind);
+  if (trip.kind === "unavailable") return <p className="muted">{trip.note}</p>;
+  return (
+    <p>
+      <a href={trip.href} target={trip.external ? "_blank" : undefined} rel={trip.external ? "noopener noreferrer" : undefined}>
+        {trip.label}
+      </a>
+      <span className="muted"> {trip.note}</span>
+    </p>
+  );
+}
+
 export function OfferBoard({
   cards,
   airports,
   route,
+  costSeed,
 }: {
   cards: OfferCard[];
   airports: AirportRecord[];
   route?: { origins: string[]; destinations: string[] };
+  costSeed?: {
+    requiredBags: number | null;
+    extraBagAmountMinor: number | null;
+    costs: AirportCost[];
+    primaryOrigin?: string;
+    primaryDestination?: string;
+  };
 }) {
   const currencies = useMemo(() => [...new Set(cards.map((card) => card.currency))], [cards]);
   const defaultId = useMemo(() => {
@@ -80,6 +109,23 @@ export function OfferBoard({
         </p>
         <RouteMap model={model} />
       </section>
+      <CostComparison
+        offers={cards.map(
+          (card): CostOffer => ({
+            id: card.id,
+            origin: card.origin,
+            destination: card.destination,
+            fareMinor: card.totalAmountMinor,
+            currency: card.currency,
+            durationMinutes: card.durationMinutes,
+            baggageKnown: card.baggageKnown,
+            baggageIncluded: card.baggageIncluded,
+            checkedBags: card.checkedBags,
+            priceKind: card.priceKind,
+          }),
+        )}
+        seed={costSeed ?? { requiredBags: null, extraBagAmountMinor: null, costs: [], primaryOrigin: route?.origins[0], primaryDestination: route?.destinations[0] }}
+      />
       {currencies.map((currency) => (
         <section key={currency} className="stack">
           <h2>Ofertas em {currency}</h2>
@@ -128,7 +174,7 @@ export function OfferBoard({
                     <button type="button" className={active ? "btn" : "btn btn-secondary"} aria-pressed={active} onClick={() => setSelectedId(card.id)}>
                       {active ? "Rota em destaque no mapa" : "Ver esta rota no mapa"}
                     </button>
-                    {card.providerLink ? <a href={card.providerLink}>Detalhe da oferta simulada</a> : null}
+                    <TripLink link={card.providerLink} priceKind={card.priceKind} />
                   </article>
                 );
               })}

@@ -12,9 +12,12 @@ model User {
   email        String   @unique
   name         String
   passwordHash String   @map("password_hash")
-  currency     String   @default("BRL")
-  market       String   @default("BR")
-  createdAt    DateTime @default(now()) @map("created_at")
+  currency       String   @default("BRL")
+  market         String   @default("BR")
+  quietStartHour Int?     @map("quiet_start_hour")
+  quietEndHour   Int?     @map("quiet_end_hour")
+  digestEnabled  Boolean  @default(true) @map("digest_enabled")
+  createdAt      DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   sessions         Session[]
@@ -116,6 +119,10 @@ enum NotificationStatus {
 
 enum AlertType {
   TARGET_PRICE
+  PERCENT_DROP
+  NEW_LOW
+  ALTERNATE_SAVINGS
+  DAILY_DIGEST
 
   @@map("alert_type")
 }
@@ -146,6 +153,7 @@ model Monitor {
   filtersVersion      Int           @default(1) @map("filters_version")
   explorationCursor   Int           @default(0) @map("exploration_cursor")
   failureCount        Int           @default(0) @map("failure_count")
+  extraBagAmountMinor Int?          @map("extra_bag_amount_minor")
   lockedAt            DateTime?     @map("locked_at")
   lockedBy            String?       @map("locked_by")
   createdAt           DateTime      @default(now()) @map("created_at")
@@ -157,6 +165,7 @@ model Monitor {
   runs          SearchRun[]
   alertRules    AlertRule[]
   notifications Notification[]
+  groundCosts   GroundCost[]
 
   @@index([userId])
   @@index([status, nextRunAt])
@@ -375,6 +384,8 @@ model AlertRule {
   monitorId         String      @map("monitor_id")
   type              AlertType
   targetAmountMinor Int         @map("target_amount_minor")
+  percentPoints     Int?        @map("percent_points")
+  minSavingsMinor   Int?        @map("min_savings_minor")
   currency          String
   scope             BudgetScope
   active            Boolean     @default(true)
@@ -408,6 +419,21 @@ model Notification {
   @@index([userId, createdAt])
   @@index([monitorId])
   @@map("notifications")
+}
+
+model GroundCost {
+  id                  String @id @default(cuid())
+  monitorId           String @map("monitor_id")
+  airport             String
+  transferAmountMinor Int?   @map("transfer_amount_minor")
+  transferMinutes     Int?   @map("transfer_minutes")
+  lodgingAmountMinor  Int?   @map("lodging_amount_minor")
+  feesAmountMinor     Int?   @map("fees_amount_minor")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@unique([monitorId, airport])
+  @@map("ground_costs")
 }
 
 model RouteDailyStat {

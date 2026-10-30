@@ -7,12 +7,25 @@ const CABINS = new Set<Cabin>(["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"
 const CURRENCIES = new Set(["BRL", "EUR", "USD"]);
 const DURATIONS = new Set([8, 12, 20, 30]);
 
+export type GroundCostDraft = {
+  airport: string;
+  transferAmountMinor: number | null;
+  transferMinutes: number | null;
+  lodgingAmountMinor: number | null;
+  feesAmountMinor: number | null;
+};
+
 export type ParsedTrip = {
   criteria: MonitorCriteria;
   name: string;
   monitorUntil: string | null;
   targetAmountMinor: number | null;
   budgetScope: BudgetScope;
+  percentPoints: number | null;
+  minSavingsMinor: number | null;
+  newLow: boolean;
+  extraBagAmountMinor: number | null;
+  groundCosts: GroundCostDraft[];
 };
 
 export function parseTripForm(
@@ -107,10 +120,24 @@ export function parseTripForm(
     maxDurationMinutes: durationHours * 60,
   };
 
+  const extras = parseExtras(formData, [...origins.codes, ...destinations.codes], currency);
+  if (!extras.ok) return extras;
+
   if (mode === "search") {
     return {
       ok: true,
-      value: { criteria, name: `${origins.codes[0]} → ${destinations.codes[0]}`, monitorUntil: null, targetAmountMinor: null, budgetScope: "TOTAL" },
+      value: {
+        criteria,
+        name: `${origins.codes[0]} → ${destinations.codes[0]}`,
+        monitorUntil: null,
+        targetAmountMinor: null,
+        budgetScope: "TOTAL",
+        percentPoints: null,
+        minSavingsMinor: null,
+        newLow: false,
+        extraBagAmountMinor: null,
+        groundCosts: [],
+      },
     };
   }
 
@@ -134,7 +161,97 @@ export function parseTripForm(
 
   return {
     ok: true,
-    value: { criteria, name, monitorUntil, targetAmountMinor, budgetScope: scopeRaw },
+    value: {
+      criteria,
+      name,
+      monitorUntil,
+      targetAmountMinor,
+      budgetScope: scopeRaw,
+      percentPoints: extras.percentPoints,
+      minSavingsMinor: extras.minSavingsMinor,
+      newLow: extras.newLow,
+      extraBagAmountMinor: extras.extraBagAmountMinor,
+      groundCosts: extras.groundCosts,
+    },
+  };
+}
+
+function optionalMoney(
+  formData: FormData,
+  field: string,
+  currency: string,
+  label: string,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  const raw = String(formData.get(field) ?? "").trim();
+  if (!raw) return { ok: true, value: null };
+  const value = parseMoneyToMinor(raw, currency);
+  if (value === null) return { ok: false, error: `${label}: use um valor como 120,00 ou deixe em branco.` };
+  return { ok: true, value };
+}
+
+function optionalMinutes(formData: FormData, field: string): { ok: true; value: number | null } | { ok: false; error: string } {
+  const raw = String(formData.get(field) ?? "").trim();
+  if (!raw) return { ok: true, value: null };
+  if (!/^\d{1,4}$/.test(raw)) return { ok: false, error: "O tempo extra de deslocamento é um número de minutos, ou fica em branco." };
+  const value = Number(raw);
+  if (value > 24 * 60) return { ok: false, error: "O tempo extra de deslocamento passa de um dia." };
+  return { ok: true, value };
+}
+
+function parseExtras(
+  formData: FormData,
+  airports: string[],
+  currency: string,
+):
+  | {
+      ok: true;
+      percentPoints: number | null;
+      minSavingsMinor: number | null;
+      newLow: boolean;
+      extraBagAmountMinor: number | null;
+      groundCosts: GroundCostDraft[];
+    }
+  | { ok: false; error: string } {
+  const percentRaw = String(formData.get("percentDrop") ?? "").trim();
+  let percentPoints: number | null = null;
+  if (percentRaw) {
+    if (!/^\d{1,2}$/.test(percentRaw)) return { ok: false, error: "A queda percentual é um número de 1 a 90." };
+    percentPoints = Number(percentRaw);
+    if (percentPoints < 1 || percentPoints > 90) return { ok: false, error: "A queda percentual é um número de 1 a 90." };
+  }
+  const savings = optionalMoney(formData, "minSavings", currency, "Economia mínima");
+  if (!savings.ok) return savings;
+  if (savings.value === 0) return { ok: false, error: "A economia mínima precisa ser maior que zero, ou ficar em branco." };
+  const extraBag = optionalMoney(formData, "extraBagAmount", currency, "Preço da mala extra");
+  if (!extraBag.ok) return extraBag;
+  const alertFields = String(formData.get("alertFields") ?? "");
+  const newLow = alertFields === "1" ? formData.get("newLow") === "on" : true;
+  const groundCosts: GroundCostDraft[] = [];
+  for (const airport of [...new Set(airports)]) {
+    const transfer = optionalMoney(formData, `transfer_${airport}`, currency, `Transfer em ${airport}`);
+    if (!transfer.ok) return transfer;
+    const lodging = optionalMoney(formData, `lodging_${airport}`, currency, `Hospedagem em ${airport}`);
+    if (!lodging.ok) return lodging;
+    const fees = optionalMoney(formData, `fees_${airport}`, currency, `Taxas em ${airport}`);
+    if (!fees.ok) return fees;
+    const minutes = optionalMinutes(formData, `minutes_${airport}`);
+    if (!minutes.ok) return minutes;
+    if (transfer.value === null && lodging.value === null && fees.value === null && minutes.value === null) continue;
+    groundCosts.push({
+      airport,
+      transferAmountMinor: transfer.value,
+      lodgingAmountMinor: lodging.value,
+      feesAmountMinor: fees.value,
+      transferMinutes: minutes.value,
+    });
+  }
+  return {
+    ok: true,
+    percentPoints,
+    minSavingsMinor: savings.value,
+    newLow,
+    extraBagAmountMinor: extraBag.value,
+    groundCosts,
   };
 }
 

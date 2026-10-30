@@ -29,10 +29,11 @@ A senha do Postgres no Compose (`abud` / `abud`) é só para uso local.
 - Bagagem desconhecida aparece como “não informado”.
 - A moeda e o valor originais da oferta são preservados.
 - O preço de dois passageiros é o total da oferta para dois passageiros.
-- Alerta de preço-alvo no site. Sem servidor de e-mail, a cópia fica na caixa de saída.
+- Alertas de preço-alvo, queda percentual, novo menor preço, economia líquida em aeroporto alternativo, horário de silêncio e resumo diário. No site e na caixa de saída. Sem servidor de e-mail, a cópia fica registrada e não é enviada.
 - Painel de consumo com chamadas, cache, falhas, repetições e custo de demonstração.
 - Mapa da rota com OpenStreetMap: origem, destino, alternativas escolhidas, opções próximas e conexão quando a oferta tem escala.
 - Amostra pequena mostra “Histórico insuficiente.”
+- O simulador não tem URL da companhia. O encaminhamento fica marcado como link de demonstração e não abre uma página de compra.
 
 ## Fora desta versão
 

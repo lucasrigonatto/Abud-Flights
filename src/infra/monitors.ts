@@ -1,5 +1,7 @@
 import { Prisma, type Monitor } from "@prisma/client";
-import { draftsForObservation } from "../domain/alerts";
+import { draftsForObservation, toAlertRule } from "../domain/alerts";
+import type { PriorSample } from "../domain/exploration";
+import { compareAlternate, quoteRoute, type AirportCost } from "../domain/trip-cost";
 import { executeRound } from "../domain/execute-round";
 import { LIMITS } from "../domain/limits";
 import type { MonitorCriteria } from "../domain/provider";
@@ -10,12 +12,25 @@ import { prisma } from "./prisma";
 import { createPrismaStore } from "./prisma-store";
 import { criteriaFromMonitor, runMonitor } from "./run-monitor";
 
+export type GroundCostDraft = {
+  airport: string;
+  transferAmountMinor: number | null;
+  transferMinutes: number | null;
+  lodgingAmountMinor: number | null;
+  feesAmountMinor: number | null;
+};
+
 export type MonitorDraft = {
   criteria: MonitorCriteria;
   name: string;
   monitorUntil: string;
   targetAmountMinor: number;
   budgetScope: "TOTAL" | "PER_PERSON";
+  percentPoints: number | null;
+  minSavingsMinor: number | null;
+  newLow: boolean;
+  extraBagAmountMinor: number | null;
+  groundCosts: GroundCostDraft[];
 };
 
 function revisionData(monitorId: string, filtersVersion: number, criteria: MonitorCriteria) {
@@ -69,6 +84,7 @@ export async function createMonitor(userId: string, draft: MonitorDraft): Promis
         intervalHours: LIMITS.intervalHours,
         nextRunAt: now,
         filtersVersion: 1,
+        extraBagAmountMinor: draft.extraBagAmountMinor,
       },
     });
     await tx.monitorRevision.create({ data: revisionData(created.id, 1, draft.criteria) });
@@ -82,6 +98,47 @@ export async function createMonitor(userId: string, draft: MonitorDraft): Promis
         active: true,
       },
     });
+    await tx.alertRule.create({
+      data: {
+        monitorId: created.id,
+        type: "NEW_LOW",
+        targetAmountMinor: 0,
+        currency: draft.criteria.currency,
+        scope: "TOTAL",
+        active: draft.newLow,
+      },
+    });
+    if (draft.percentPoints !== null) {
+      await tx.alertRule.create({
+        data: {
+          monitorId: created.id,
+          type: "PERCENT_DROP",
+          targetAmountMinor: 0,
+          percentPoints: draft.percentPoints,
+          currency: draft.criteria.currency,
+          scope: draft.budgetScope,
+          active: true,
+        },
+      });
+    }
+    if (draft.minSavingsMinor !== null) {
+      await tx.alertRule.create({
+        data: {
+          monitorId: created.id,
+          type: "ALTERNATE_SAVINGS",
+          targetAmountMinor: 0,
+          minSavingsMinor: draft.minSavingsMinor,
+          currency: draft.criteria.currency,
+          scope: "TOTAL",
+          active: true,
+        },
+      });
+    }
+    if (draft.groundCosts.length > 0) {
+      await tx.groundCost.createMany({
+        data: draft.groundCosts.map((cost) => ({ monitorId: created.id, ...cost })),
+      });
+    }
     return created;
   });
   try {
@@ -115,6 +172,30 @@ export async function getMonitorForUser(userId: string, monitorId: string) {
   return prisma.monitor.findFirst({ where: { id: monitorId, userId } });
 }
 
+async function syncOptionalRule(
+  tx: Prisma.TransactionClient,
+  monitorId: string,
+  type: "PERCENT_DROP" | "ALTERNATE_SAVINGS" | "NEW_LOW",
+  currency: string,
+  data: { percentPoints?: number; minSavingsMinor?: number; active?: boolean } | null,
+) {
+  const existing = await tx.alertRule.findFirst({ where: { monitorId, type } });
+  if (data === null) {
+    if (existing) await tx.alertRule.delete({ where: { id: existing.id } });
+    return;
+  }
+  const next = {
+    currency,
+    targetAmountMinor: 0,
+    scope: "TOTAL" as const,
+    active: data.active ?? true,
+    percentPoints: data.percentPoints ?? null,
+    minSavingsMinor: data.minSavingsMinor ?? null,
+  };
+  if (existing) await tx.alertRule.update({ where: { id: existing.id }, data: next });
+  else await tx.alertRule.create({ data: { monitorId, type, ...next } });
+}
+
 function sameCriteria(monitor: Monitor, criteria: MonitorCriteria): boolean {
   return (
     monitor.origins.join(",") === criteria.origins.join(",") &&
@@ -140,12 +221,21 @@ export async function updateMonitor(userId: string, monitorId: string, draft: Mo
     throw new Error("Monitoramento não encontrado.");
   }
   const criteriaChanged = !sameCriteria(monitor, draft.criteria);
-  const currentRule = await prisma.alertRule.findFirst({ where: { monitorId: monitor.id, type: "TARGET_PRICE" } });
+  const rules = await prisma.alertRule.findMany({ where: { monitorId: monitor.id } });
+  const currentRule = rules.find((rule) => rule.type === "TARGET_PRICE");
+  const percentRule = rules.find((rule) => rule.type === "PERCENT_DROP");
+  const savingsRule = rules.find((rule) => rule.type === "ALTERNATE_SAVINGS");
+  const newLowRule = rules.find((rule) => rule.type === "NEW_LOW");
   const targetChanged =
     !currentRule ||
     currentRule.targetAmountMinor !== draft.targetAmountMinor ||
     currentRule.scope !== draft.budgetScope ||
-    currentRule.currency !== draft.criteria.currency;
+    currentRule.currency !== draft.criteria.currency ||
+    percentRule?.percentPoints !== draft.percentPoints ||
+    (draft.percentPoints === null) !== !percentRule ||
+    savingsRule?.minSavingsMinor !== draft.minSavingsMinor ||
+    (draft.minSavingsMinor === null) !== !savingsRule ||
+    newLowRule?.active !== draft.newLow;
   const now = new Date();
   await prisma.$transaction(async (tx) => {
     const nextVersion = criteriaChanged ? monitor.filtersVersion + 1 : monitor.filtersVersion;
@@ -174,6 +264,7 @@ export async function updateMonitor(userId: string, monitorId: string, draft: Mo
         nextRunAt: criteriaChanged ? now : monitor.nextRunAt,
         lockedAt: null,
         lockedBy: null,
+        extraBagAmountMinor: draft.extraBagAmountMinor,
       },
     });
     if (criteriaChanged) {
@@ -188,6 +279,15 @@ export async function updateMonitor(userId: string, monitorId: string, draft: Mo
         active: true,
       },
     });
+    await syncOptionalRule(tx, monitor.id, "PERCENT_DROP", draft.criteria.currency, draft.percentPoints === null ? null : { percentPoints: draft.percentPoints });
+    await syncOptionalRule(tx, monitor.id, "ALTERNATE_SAVINGS", draft.criteria.currency, draft.minSavingsMinor === null ? null : { minSavingsMinor: draft.minSavingsMinor });
+    await syncOptionalRule(tx, monitor.id, "NEW_LOW", draft.criteria.currency, { active: draft.newLow });
+    await tx.groundCost.deleteMany({ where: { monitorId: monitor.id } });
+    if (draft.groundCosts.length > 0) {
+      await tx.groundCost.createMany({
+        data: draft.groundCosts.map((cost) => ({ monitorId: monitor.id, ...cost })),
+      });
+    }
   });
   if (criteriaChanged && monitor.status === "ACTIVE") {
     try {
@@ -228,16 +328,113 @@ export async function setMonitorStatus(userId: string, monitorId: string, status
 export async function notifyCurrentOffers(userId: string, monitorId: string) {
   const monitor = await prisma.monitor.findFirst({
     where: { id: monitorId, userId },
-    include: { alertRules: true, runs: { orderBy: { startedAt: "desc" }, take: 1 } },
+    include: {
+      alertRules: true,
+      groundCosts: true,
+      user: true,
+      runs: { orderBy: { startedAt: "desc" }, take: 1 },
+    },
   });
   if (!monitor) return;
   const latest = monitor.runs[0];
   if (!latest) return;
-  const observations = await prisma.priceObservation.findMany({
-    where: { monitorId, searchRunId: latest.id, userId },
-    include: { itinerary: true },
-  });
+  const [observations, priorRows] = await Promise.all([
+    prisma.priceObservation.findMany({
+      where: { monitorId, searchRunId: latest.id, userId },
+      include: { itinerary: true },
+    }),
+    prisma.priceObservation.findMany({
+      where: { monitorId, filtersVersion: monitor.filtersVersion, searchRunId: { not: latest.id } },
+      orderBy: { sourceCollectedAt: "asc" },
+      take: 500,
+    }),
+  ]);
+  const priorSamples: PriorSample[] = priorRows.map((row) => ({
+    origin: row.origin,
+    destination: row.destination,
+    departDate: isoFromUtcDate(row.departDate),
+    returnDate: isoFromUtcDate(row.returnDate),
+    priceKind: row.priceKind,
+    totalAmountMinor: row.totalAmountMinor,
+    collectedAt: row.sourceCollectedAt.toISOString(),
+    currency: row.currency,
+  }));
+  const groundCosts: AirportCost[] = monitor.groundCosts.map((cost) => ({
+    airport: cost.airport,
+    transferMinor: cost.transferAmountMinor,
+    lodgingMinor: cost.lodgingAmountMinor,
+    feesMinor: cost.feesAmountMinor,
+    transferMinutes: cost.transferMinutes,
+  }));
+  const seen = observations.map((observation) => ({
+    origin: observation.origin,
+    destination: observation.destination,
+    totalAmountMinor: observation.totalAmountMinor,
+    currency: observation.currency,
+    priceKind: observation.priceKind,
+    durationMinutes: observation.itinerary.durationMinutes,
+    baggageKnown: observation.baggageKnown,
+    baggageIncluded: observation.baggageIncluded,
+    checkedBags: observation.checkedBags,
+  }));
   for (const observation of observations) {
+    const routePrior = priorSamples.filter(
+      (sample) =>
+        sample.currency === observation.currency &&
+        sample.priceKind === observation.priceKind &&
+        sample.origin === observation.origin &&
+        sample.destination === observation.destination,
+    );
+    const kindPrior = priorSamples.filter(
+      (sample) => sample.currency === observation.currency && sample.priceKind === observation.priceKind,
+    );
+    const previous = routePrior.at(-1);
+    const primaryOrigin = monitor.origins[0];
+    const primaryDestination = monitor.destinations[0];
+    let netSavingsMinor: number | null = null;
+    let extraMinutes: number | null = null;
+    if (observation.origin !== primaryOrigin || observation.destination !== primaryDestination) {
+      const primary = seen
+        .filter(
+          (item) =>
+            item.origin === primaryOrigin &&
+            item.destination === primaryDestination &&
+            item.currency === observation.currency &&
+            item.priceKind !== "LIVE_INDICATIVE",
+        )
+        .sort((left, right) => left.totalAmountMinor - right.totalAmountMinor)[0];
+      if (primary && observation.priceKind !== "LIVE_INDICATIVE") {
+        const compared = compareAlternate(
+          quoteRoute({
+            fareMinor: primary.totalAmountMinor,
+            origin: primary.origin,
+            destination: primary.destination,
+            durationMinutes: primary.durationMinutes,
+            requiredBags: monitor.checkedBags,
+            baggageKnown: primary.baggageKnown,
+            baggageIncluded: primary.baggageIncluded,
+            includedBags: primary.checkedBags,
+            extraBagAmountMinor: monitor.extraBagAmountMinor,
+            costs: groundCosts,
+          }),
+          quoteRoute({
+            fareMinor: observation.totalAmountMinor,
+            origin: observation.origin,
+            destination: observation.destination,
+            durationMinutes: observation.itinerary.durationMinutes,
+            requiredBags: monitor.checkedBags,
+            baggageKnown: observation.baggageKnown,
+            baggageIncluded: observation.baggageIncluded,
+            includedBags: observation.checkedBags,
+            extraBagAmountMinor: monitor.extraBagAmountMinor,
+            costs: groundCosts,
+          }),
+          observation.currency,
+        );
+        netSavingsMinor = compared.savingsMinor;
+        extraMinutes = compared.extraTravelMinutes;
+      }
+    }
     const drafts = draftsForObservation({
       observation: {
         id: observation.id,
@@ -256,16 +453,19 @@ export async function notifyCurrentOffers(userId: string, monitorId: string) {
         baggageIncluded: observation.baggageIncluded,
         checkedBags: observation.checkedBags,
       },
-      rules: monitor.alertRules.map((rule) => ({
-        id: rule.id,
-        type: "TARGET_PRICE" as const,
-        targetAmountMinor: rule.targetAmountMinor,
-        currency: rule.currency,
-        scope: rule.scope,
-        active: rule.active,
-      })),
+      rules: monitor.alertRules.filter((rule) => rule.type !== "DAILY_DIGEST").map((rule) => toAlertRule(rule)),
       userId,
       monitorId,
+      context: {
+        previousAmountMinor: previous?.totalAmountMinor ?? null,
+        lowestAmountMinor: kindPrior.length ? Math.min(...kindPrior.map((sample) => sample.totalAmountMinor)) : null,
+        netSavingsMinor,
+        extraMinutes,
+        now: new Date(),
+        quietStartHour: monitor.user.quietStartHour,
+        quietEndHour: monitor.user.quietEndHour,
+        digestEnabled: monitor.user.digestEnabled,
+      },
     });
     for (const draft of drafts) {
       try {

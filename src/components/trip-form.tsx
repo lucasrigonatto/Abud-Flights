@@ -10,6 +10,47 @@ import { RouteMap } from "./route-map";
 
 export type { TripDefaults };
 
+function GroundCostFields({
+  airports,
+  saved,
+}: {
+  airports: string[];
+  saved: TripDefaults["groundCosts"];
+}) {
+  const codes = [...new Set(airports.map(codeValue).filter((code) => code.length === 3))];
+  if (codes.length === 0) return null;
+  return (
+    <div className="stack">
+      <p className="muted">
+        Custos extras por aeroporto. Em branco fica “não informado” e não vira zero. Informe 0 quando o extra não existe. O total só fecha quando tarifa, bagagem, transfer, hospedagem e taxas são conhecidos.
+      </p>
+      {codes.map((code) => {
+        const current = saved[code] ?? { transfer: "", lodging: "", fees: "", minutes: "" };
+        return (
+          <div key={code} className="form-grid">
+            <label>
+              Transfer extra em {code}
+              <input name={`transfer_${code}`} defaultValue={current.transfer} inputMode="decimal" placeholder="não informado" />
+            </label>
+            <label>
+              Hospedagem extra em {code}
+              <input name={`lodging_${code}`} defaultValue={current.lodging} inputMode="decimal" placeholder="não informado" />
+            </label>
+            <label>
+              Taxas conhecidas em {code}
+              <input name={`fees_${code}`} defaultValue={current.fees} inputMode="decimal" placeholder="não informado" />
+            </label>
+            <label>
+              Minutos extras em {code}
+              <input name={`minutes_${code}`} defaultValue={current.minutes} inputMode="numeric" placeholder="não informado" />
+            </label>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function codeValue(value: string): string {
   return value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
 }
@@ -219,10 +260,31 @@ export function TripForm({
                     <option value="PER_PERSON">por pessoa</option>
                   </select>
                 </label>
+                <label>
+                  Queda percentual
+                  <input name="percentDrop" defaultValue={defaults.percentDrop} inputMode="numeric" placeholder="10" />
+                </label>
+                <label>
+                  Economia mínima no alternativo
+                  <input name="minSavings" defaultValue={defaults.minSavings} inputMode="decimal" placeholder="300,00" />
+                </label>
+                <label>
+                  Preço de cada mala que falta
+                  <input name="extraBagAmount" defaultValue={defaults.extraBagAmount} inputMode="decimal" placeholder="não informado" />
+                </label>
               </div>
+              <label className="check">
+                <input type="checkbox" name="newLow" defaultChecked={defaults.newLow} />
+                Avisar quando surgir um preço menor que o menor já visto neste monitoramento
+              </label>
+              <input type="hidden" name="alertFields" value="1" />
+              <GroundCostFields
+                airports={[origin, originAlts[0], originAlts[1], destination, destinationAlts[0], destinationAlts[1]]}
+                saved={defaults.groundCosts}
+              />
               <p className="notice">
                 A frequência é fixa: uma rodada a cada 12 horas, no servidor, mesmo com o navegador fechado. Uma rodada nesse intervalo pode perder promoções mais curtas.
-                Cada rodada consulta no máximo 8 combinações. Se houver mais, a cobertura fica parcial.
+                Cada rodada consulta no máximo 8 combinações. Com histórico, a rodada confirma primeiro as combinações que já têm preço e usa o restante da cota para datas e aeroportos ainda pouco consultados. Sem calendário indicativo autorizado, nenhum preço indicativo é inventado. Se a rodada não cobrir tudo, o menor preço é o menor entre as opções consultadas.
               </p>
             </fieldset>
           ) : (

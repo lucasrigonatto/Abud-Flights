@@ -39,9 +39,9 @@ export type HistoryReading = {
 
 const LABELS: Record<Classification, string> = {
   historico_insuficiente: "Histórico insuficiente.",
-  abaixo_da_faixa: "Abaixo da faixa histórica.",
-  dentro_da_faixa: "Dentro da faixa histórica.",
-  acima_da_faixa: "Acima da faixa histórica.",
+  abaixo_da_faixa: "Abaixo do histórico.",
+  dentro_da_faixa: "Dentro do histórico.",
+  acima_da_faixa: "Acima do histórico.",
 };
 
 export function comparabilityKey(
@@ -135,5 +135,66 @@ export function classifyHistory(comparable: ObservationView[]): HistoryReading {
     label: LABELS[classification],
     ...base,
     medianAmountMinor: median(prices),
+  };
+}
+
+export type PricePoint = { day: string; amountMinor: number };
+
+export function collectionDay(collectedAt: string): string {
+  return collectedAt.slice(0, 10);
+}
+
+export function lowestByCollectionDay(observations: ObservationView[]): PricePoint[] {
+  const best = new Map<string, number>();
+  for (const observation of observations) {
+    const day = collectionDay(observation.collectedAt);
+    const current = best.get(day);
+    if (current === undefined || observation.totalAmountMinor < current) best.set(day, observation.totalAmountMinor);
+  }
+  return [...best.entries()]
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([day, amountMinor]) => ({ day, amountMinor }));
+}
+
+function daysBetween(start: string, end: string): number {
+  const left = Date.parse(`${start}T00:00:00.000Z`);
+  const right = Date.parse(`${end}T00:00:00.000Z`);
+  return Math.round((right - left) / 86_400_000);
+}
+
+export function chartSegments(points: PricePoint[]): PricePoint[][] {
+  if (points.length === 0) return [];
+  const segments: PricePoint[][] = [[points[0]]];
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    if (daysBetween(previous.day, current.day) > 1) segments.push([current]);
+    else segments[segments.length - 1].push(current);
+  }
+  return segments;
+}
+
+export function dateMatrix(observations: ObservationView[]): {
+  departures: string[];
+  returns: string[];
+  amounts: Array<Array<number | null>>;
+} {
+  const departures = [...new Set(observations.map((observation) => observation.departDate))].sort();
+  const returns = [...new Set(observations.map((observation) => observation.returnDate))].sort();
+  const best = new Map<string, number>();
+  for (const observation of observations) {
+    const key = `${observation.departDate}|${observation.returnDate}`;
+    const current = best.get(key);
+    if (current === undefined || observation.totalAmountMinor < current) best.set(key, observation.totalAmountMinor);
+  }
+  return {
+    departures,
+    returns,
+    amounts: departures.map((departDate) =>
+      returns.map((returnDate) => {
+        const amount = best.get(`${departDate}|${returnDate}`);
+        return amount === undefined ? null : amount;
+      }),
+    ),
   };
 }

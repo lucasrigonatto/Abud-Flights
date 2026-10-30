@@ -42,7 +42,7 @@ export default async function SearchResultPage({ params }: { params: Promise<{ r
         <h1>Resultado da busca</h1>
         <p className={tone}>{message}</p>
         <p className="muted">
-          {run.combinationsQueried} de {run.combinationsPlanned} combinações consultadas nesta rodada.
+          {run.combinationsQueried} de {run.combinationsPlanned} combinações consultadas nesta rodada. Cada rodada tem um teto de combinações. Sem histórico anterior, a consulta segue a fila. Com histórico, a rodada confirma primeiro as combinações já precificadas e deixa o restante da cota para as menos consultadas. Não há calendário indicativo autorizado, então nenhum preço indicativo é inventado.
         </p>
       </section>
       <OfferList rows={rows} now={new Date()} airports={AIRPORTS} />

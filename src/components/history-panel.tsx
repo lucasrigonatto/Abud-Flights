@@ -1,7 +1,16 @@
 import type { PriceObservation } from "@prisma/client";
 import { formatBaggage } from "../domain/baggage";
 import { formatCivilDate, formatConsultation } from "../domain/dates";
-import { classifyHistory, comparabilityKey, groupComparable, type ObservationView } from "../domain/history";
+import {
+  chartSegments,
+  classifyHistory,
+  comparabilityKey,
+  dateMatrix,
+  groupComparable,
+  lowestByCollectionDay,
+  type ObservationView,
+  type PricePoint,
+} from "../domain/history";
 import { formatMoney } from "../domain/money";
 import { passengerLabel, priceKindLabel } from "../domain/labels";
 
@@ -55,7 +64,11 @@ export function HistoryPanel({
         const sample = group.observations[0];
         return (
           <article key={group.key} className="card stack">
-            <p className="reading">{group.reading.label}</p>
+            <p className={`reading reading-${group.reading.classification}`}>{group.reading.label}</p>
+            {sample.priceKind === "LIVE_INDICATIVE" ? <p className="notice">Preço indicativo. Não é uma oferta atual.</p> : null}
+            {sample.priceKind === "DEMONSTRATION" ? <p className="muted">Preço de demonstração. Não é uma tarifa ao vivo.</p> : null}
+            <PriceChart points={lowestByCollectionDay(group.observations)} currency={sample.currency} />
+            <DateMatrix observations={group.observations} currency={sample.currency} />
             <p className="muted">
               {sample.origin} → {sample.destination} · {passengerLabel(sample.adults, sample.childAges.length)} · bagagem {formatBaggage(sample)} ·{" "}
               {sample.currency} · {priceKindLabel(sample.priceKind)}
@@ -95,6 +108,79 @@ export function HistoryPanel({
         );
       })}
     </section>
+  );
+}
+
+function PriceChart({ points, currency }: { points: PricePoint[]; currency: string }) {
+  const width = 640;
+  const height = 200;
+  const pad = { left: 16, right: 16, top: 16, bottom: 28 };
+  if (points.length === 0) {
+    return <p className="muted">Não há coleta para o gráfico. Uma lacuna não vira zero.</p>;
+  }
+  const min = Math.min(...points.map((point) => point.amountMinor));
+  const max = Math.max(...points.map((point) => point.amountMinor));
+  const span = Math.max(1, max - min);
+  const innerWidth = width - pad.left - pad.right;
+  const innerHeight = height - pad.top - pad.bottom;
+  const xAt = (index: number) => (points.length === 1 ? pad.left + innerWidth / 2 : pad.left + (index * innerWidth) / (points.length - 1));
+  const yAt = (amount: number) => pad.top + ((max - amount) / span) * innerHeight;
+  const indexOf = (point: PricePoint) => points.findIndex((item) => item.day === point.day);
+  return (
+    <figure className="chart-wrap">
+      <svg viewBox={`0 0 ${width} ${height}`} className="chart" role="img" aria-label="Menor preço comparável por dia de coleta">
+        {chartSegments(points).map((segment, segmentIndex) => (
+          <polyline
+            key={`${segment[0]?.day ?? segmentIndex}`}
+            className="chart-line"
+            points={segment.map((point) => `${xAt(indexOf(point))},${yAt(point.amountMinor)}`).join(" ")}
+          />
+        ))}
+        {points.map((point, index) => (
+          <circle key={point.day} className="chart-dot" cx={xAt(index)} cy={yAt(point.amountMinor)} r="4">
+            <title>{`${formatCivilDate(point.day)} · ${formatMoney(point.amountMinor, currency)}`}</title>
+          </circle>
+        ))}
+      </svg>
+      <figcaption className="muted">
+        Menor preço de {formatMoney(min, currency)} a {formatMoney(max, currency)}. Cada ponto é o menor preço comparável daquele dia de coleta. Dias sem coleta interrompem a linha e não viram zero.
+      </figcaption>
+    </figure>
+  );
+}
+
+function DateMatrix({ observations, currency }: { observations: ObservationView[]; currency: string }) {
+  const matrix = dateMatrix(observations);
+  if (matrix.departures.length === 0) return null;
+  return (
+    <div className="stack">
+      <h3>Ida e volta</h3>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ida \ volta</th>
+              {matrix.returns.map((returnDate) => (
+                <th key={returnDate}>{formatCivilDate(returnDate)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matrix.departures.map((departDate, rowIndex) => (
+              <tr key={departDate}>
+                <th>{formatCivilDate(departDate)}</th>
+                {matrix.amounts[rowIndex].map((amount, columnIndex) => (
+                  <td key={`${departDate}-${matrix.returns[columnIndex]}`} className={amount === null ? "gap" : undefined}>
+                    {amount === null ? "lacuna" : formatMoney(amount, currency)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted">Célula vazia é lacuna de coleta, não preço zero.</p>
+    </div>
   );
 }
 

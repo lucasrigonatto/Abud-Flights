@@ -1,5 +1,7 @@
 import type { Monitor, AlertRule } from "@prisma/client";
+import { toAlertRule } from "../domain/alerts";
 import { executeRound } from "../domain/execute-round";
+import type { PriorSample } from "../domain/exploration";
 import { LIMITS } from "../domain/limits";
 import type { MonitorCriteria } from "../domain/provider";
 import { failureRetryAt, isDue, nextRegularRun } from "../domain/schedule";
@@ -29,16 +31,22 @@ export function criteriaFromMonitor(monitor: Monitor): MonitorCriteria {
 }
 
 function rulesFrom(alertRules: AlertRule[]) {
-  return alertRules
-    .filter((rule) => rule.active && rule.type === "TARGET_PRICE")
-    .map((rule) => ({
-      id: rule.id,
-      type: "TARGET_PRICE" as const,
-      targetAmountMinor: rule.targetAmountMinor,
-      currency: rule.currency,
-      scope: rule.scope,
-      active: rule.active,
-    }));
+  return alertRules.filter((rule) => rule.active && rule.type !== "DAILY_DIGEST").map((rule) => toAlertRule(rule));
+}
+
+async function ensureNewLow(monitor: Monitor & { alertRules: AlertRule[] }): Promise<AlertRule[]> {
+  if (monitor.alertRules.some((rule) => rule.type === "NEW_LOW")) return monitor.alertRules;
+  const created = await prisma.alertRule.create({
+    data: {
+      monitorId: monitor.id,
+      type: "NEW_LOW",
+      targetAmountMinor: 0,
+      currency: monitor.currency,
+      scope: "TOTAL",
+      active: true,
+    },
+  });
+  return [...monitor.alertRules, created];
 }
 
 export async function runMonitor(id: string, workerId: string, now = new Date()): Promise<boolean> {
@@ -55,8 +63,27 @@ export async function runMonitor(id: string, workerId: string, now = new Date())
   });
   if (claimed.count !== 1) return false;
 
-  const monitor = await prisma.monitor.findUnique({ where: { id }, include: { alertRules: true } });
+  const monitor = await prisma.monitor.findUnique({
+    where: { id },
+    include: { alertRules: true, groundCosts: true, user: true },
+  });
   if (!monitor) return false;
+  const alertRules = await ensureNewLow(monitor);
+  const priorRows = await prisma.priceObservation.findMany({
+    where: { monitorId: monitor.id, filtersVersion: monitor.filtersVersion },
+    orderBy: { sourceCollectedAt: "asc" },
+    take: 500,
+  });
+  const priorSamples: PriorSample[] = priorRows.map((row) => ({
+    origin: row.origin,
+    destination: row.destination,
+    departDate: isoFromUtcDate(row.departDate),
+    returnDate: isoFromUtcDate(row.returnDate),
+    priceKind: row.priceKind,
+    totalAmountMinor: row.totalAmountMinor,
+    collectedAt: row.sourceCollectedAt.toISOString(),
+    currency: row.currency,
+  }));
   const slot = monitor.pendingScheduledFor ?? monitor.nextRunAt;
   if (!monitor.pendingScheduledFor) {
     await prisma.monitor.update({ where: { id }, data: { pendingScheduledFor: slot } });
@@ -72,11 +99,23 @@ export async function runMonitor(id: string, workerId: string, now = new Date())
       criteria: criteriaFromMonitor(monitor),
       cursor: monitor.explorationCursor,
       limit: LIMITS.maxCombinationsPerRound,
-      alertRules: rulesFrom(monitor.alertRules),
+      alertRules: rulesFrom(alertRules),
       now,
       budgetRemainingMinor: await providerBudgetRemaining(now),
       costPerSearchMinor: LIMITS.costPerSearchMinor,
       maxAttempts: LIMITS.providerRetryAttempts,
+      priorSamples,
+      groundCosts: monitor.groundCosts.map((cost) => ({
+        airport: cost.airport,
+        transferMinor: cost.transferAmountMinor,
+        lodgingMinor: cost.lodgingAmountMinor,
+        feesMinor: cost.feesAmountMinor,
+        transferMinutes: cost.transferMinutes,
+      })),
+      extraBagAmountMinor: monitor.extraBagAmountMinor,
+      quietStartHour: monitor.user.quietStartHour,
+      quietEndHour: monitor.user.quietEndHour,
+      digestEnabled: monitor.user.digestEnabled,
     });
 
     if (result.datesPassed) {

@@ -1,10 +1,11 @@
-import { draftsForObservation } from "./alerts";
+import { draftsForObservation, type AlertContext, type AlertRuleInput } from "./alerts";
 import { normalizeBaggage, baggageSignature } from "./baggage";
-import { buildCombinations, combinationQuery, searchDefinitionKey, selectRoundSlice, travelDatesPassed } from "./combinations";
+import { buildCombinations, combinationQuery, searchDefinitionKey, travelDatesPassed } from "./combinations";
 import { coverageMessage, isTerminalStatus, type RunStatus } from "./coverage";
 import { isoDateInTimeZone } from "./dates";
+import { planFlexibleRound, type PriorSample } from "./exploration";
 import { sha256 } from "./hash";
-import type { AlertRuleInput } from "./alerts";
+import { compareAlternate, quoteRoute, type AirportCost } from "./trip-cost";
 import type { FlightProvider, MonitorCriteria, ProviderOffer, Segment } from "./provider";
 import { ProviderError } from "./provider";
 import type { ObservationRecord, RoundStore, RunRecord } from "./store";
@@ -22,6 +23,12 @@ export type RoundInput = {
   now: Date;
   budgetRemainingMinor: number | null;
   costPerSearchMinor: number;
+  priorSamples?: PriorSample[];
+  groundCosts?: AirportCost[];
+  extraBagAmountMinor?: number | null;
+  quietStartHour?: number | null;
+  quietEndHour?: number | null;
+  digestEnabled?: boolean;
   sleep?: (ms: number) => Promise<void>;
   maxAttempts?: number;
   today?: string;
@@ -198,7 +205,7 @@ export async function executeRound(store: RoundStore, provider: FlightProvider, 
     );
   }
 
-  const slice = selectRoundSlice(combinations, input.cursor, input.limit);
+  const slice = planFlexibleRound(combinations, input.cursor, input.limit, input.priorSamples ?? []);
   let successes = 0;
   let failures = 0;
   let offerCount = 0;
@@ -422,18 +429,91 @@ export async function executeRound(store: RoundStore, provider: FlightProvider, 
   return resultFromRun(finished, false);
 }
 
+function quoteSeen(observation: ObservationRecord, input: RoundInput) {
+  return quoteRoute({
+    fareMinor: observation.totalAmountMinor,
+    origin: observation.origin,
+    destination: observation.destination,
+    durationMinutes: observation.durationMinutes,
+    requiredBags: input.criteria.checkedBags,
+    baggageKnown: observation.baggageKnown,
+    baggageIncluded: observation.baggageIncluded,
+    includedBags: observation.checkedBags,
+    extraBagAmountMinor: input.extraBagAmountMinor ?? null,
+    costs: input.groundCosts ?? [],
+  });
+}
+
+function savingsFor(
+  observation: ObservationRecord,
+  seen: ObservationRecord[],
+  input: RoundInput,
+): { netSavingsMinor: number | null; extraMinutes: number | null } {
+  const primaryOrigin = input.criteria.origins[0];
+  const primaryDestination = input.criteria.destinations[0];
+  if (!primaryOrigin || !primaryDestination) return { netSavingsMinor: null, extraMinutes: null };
+  if (observation.origin === primaryOrigin && observation.destination === primaryDestination) {
+    return { netSavingsMinor: null, extraMinutes: null };
+  }
+  const comparable = seen.filter((item) => item.currency === observation.currency && item.priceKind !== "LIVE_INDICATIVE");
+  const primaryOffers = comparable.filter((item) => item.origin === primaryOrigin && item.destination === primaryDestination);
+  if (primaryOffers.length === 0) return { netSavingsMinor: null, extraMinutes: null };
+  const primary = primaryOffers.reduce((best, item) => (item.totalAmountMinor < best.totalAmountMinor ? item : best));
+  const compared = compareAlternate(quoteSeen(primary, input), quoteSeen(observation, input), observation.currency);
+  return { netSavingsMinor: compared.savingsMinor, extraMinutes: compared.extraTravelMinutes };
+}
+
+function alertContext(observation: ObservationRecord, seen: ObservationRecord[], input: RoundInput): AlertContext {
+  const prior = (input.priorSamples ?? []).filter(
+    (sample) => sample.currency === observation.currency && sample.priceKind === observation.priceKind,
+  );
+  const sameRoute = prior.filter((sample) => sample.origin === observation.origin && sample.destination === observation.destination);
+  const previous = [...sameRoute].sort((left, right) => left.collectedAt.localeCompare(right.collectedAt)).at(-1);
+  const lowest = prior.length > 0 ? Math.min(...prior.map((sample) => sample.totalAmountMinor)) : null;
+  const savings = savingsFor(observation, seen, input);
+  return {
+    previousAmountMinor: previous?.totalAmountMinor ?? null,
+    lowestAmountMinor: lowest,
+    netSavingsMinor: savings.netSavingsMinor,
+    extraMinutes: savings.extraMinutes,
+    now: input.now,
+    quietStartHour: input.quietStartHour ?? null,
+    quietEndHour: input.quietEndHour ?? null,
+    digestEnabled: input.digestEnabled === true,
+  };
+}
+
 async function notifyCheapest(store: RoundStore, observations: ObservationRecord[], input: RoundInput): Promise<void> {
   const cheapest = new Map<string, ObservationRecord>();
   for (const observation of observations) {
     const current = cheapest.get(observation.currency);
     if (!current || observation.totalAmountMinor < current.totalAmountMinor) cheapest.set(observation.currency, observation);
   }
+  const notified = new Set<string>();
   for (const observation of cheapest.values()) {
-    await notify(store, observation, input);
+    notified.add(observation.id);
+    await notify(store, observation, observations, input, input.alertRules);
   }
+  let bestAlternate: { observation: ObservationRecord; savings: number } | null = null;
+  for (const observation of observations) {
+    if (observation.priceKind === "LIVE_INDICATIVE") continue;
+    const savings = alertContext(observation, observations, input).netSavingsMinor;
+    if (savings == null || savings <= 0) continue;
+    if (!bestAlternate || savings > bestAlternate.savings) bestAlternate = { observation, savings };
+  }
+  if (!bestAlternate || notified.has(bestAlternate.observation.id)) return;
+  const alternateRules = input.alertRules.filter((rule) => rule.type === "ALTERNATE_SAVINGS");
+  if (alternateRules.length === 0) return;
+  await notify(store, bestAlternate.observation, observations, input, alternateRules);
 }
 
-async function notify(store: RoundStore, observation: ObservationRecord, input: RoundInput): Promise<void> {
+async function notify(
+  store: RoundStore,
+  observation: ObservationRecord,
+  seen: ObservationRecord[],
+  input: RoundInput,
+  rules: AlertRuleInput[],
+): Promise<void> {
   if (!input.monitorId || !input.userId || input.filtersVersion === null) return;
   const drafts = draftsForObservation({
     observation: {
@@ -453,9 +533,10 @@ async function notify(store: RoundStore, observation: ObservationRecord, input: 
       baggageIncluded: observation.baggageIncluded,
       checkedBags: observation.checkedBags,
     },
-    rules: input.alertRules,
+    rules,
     userId: input.userId,
     monitorId: input.monitorId,
+    context: alertContext(observation, seen, input),
   });
   for (const draft of drafts) {
     await store.insertNotification(draft);
