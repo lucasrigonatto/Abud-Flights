@@ -54,7 +54,7 @@ export function HomeShowcase({ signedIn }: { signedIn: boolean }) {
           <li>Escolha origem, destino e as alternativas.</li>
           <li>Compare o que a rodada consultou.</li>
           <li>Acompanhe a cada 12 horas.</li>
-          <li>Abra o link da companhia ou da fonte.</li>
+          <li>Abra o Google Voos com a rota e as datas.</li>
         </ol>
       </div>
       <aside className="card stack hero-map">

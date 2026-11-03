@@ -21,8 +21,8 @@ export default async function HomePage() {
           <p>Origem e destino alternativos são escolhidos à mão, até cinco de cada lado. Não há busca por raio.</p>
         </article>
         <article className="card">
-          <h2>Custo da alternativa</h2>
-          <p>O total soma tarifa, bagagem, transfer, hospedagem e taxas conhecidas. O que falta aparece como “não informado”.</p>
+          <h2>Tarifa da rota</h2>
+          <p>A comparação mostra a rota e a tarifa. O botão da oferta abre a busca ao vivo no Google Voos.</p>
         </article>
         <article className="card">
           <h2>Histórico</h2>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AIRPORTS, CURATED_AIRPORTS } from "../src/lib/airports";
-import { greatCircle, haversineKm } from "../src/lib/geo";
+import { flightArc, greatCircle, haversineKm, splitAtAntimeridian } from "../src/lib/geo";
 import { buildRouteMapModel, nearbyAirports, segmentChain, toggleAlternate } from "../src/lib/route-map";
 import { createSimulator } from "../src/providers/simulator";
 
@@ -79,6 +79,27 @@ describe("mapa da rota", () => {
     expect(arc[0]).toEqual([gyn.latitude, gyn.longitude]);
     expect(arc.at(-1)?.[0]).toBeCloseTo(lis.latitude, 5);
     expect(arc.at(-1)?.[1]).toBeCloseTo(lis.longitude, 5);
+
+    const route = flightArc(gyn, lis);
+    expect(route.length).toBeGreaterThan(24);
+    expect(route[0]).toEqual([gyn.latitude, gyn.longitude]);
+    expect(route.at(-1)?.[0]).toBeCloseTo(lis.latitude, 5);
+    const parts = splitAtAntimeridian([
+      [10, 170],
+      [12, 179],
+      [14, -179],
+      [16, -170],
+    ]);
+    expect(parts).toEqual([
+      [
+        [10, 170],
+        [12, 179],
+      ],
+      [
+        [14, -179],
+        [16, -170],
+      ],
+    ]);
   });
 
   it("o mapa vazio não inventa aeroporto e a rota parcial mostra só o que foi escolhido", () => {

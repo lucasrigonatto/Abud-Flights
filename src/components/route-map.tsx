@@ -3,14 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { LayerGroup, Map as LeafletMap } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { splitAtAntimeridian } from "../lib/geo";
 import { markerRoleLabel, type MarkerRole, type RouteMapModel, type RouteMarker } from "../lib/route-map";
 
 type LeafletLib = typeof import("leaflet");
 
 const LINE_STYLE: Record<RouteMapModel["lines"][number]["kind"], { color: string; weight: number; opacity: number; dashArray?: string }> = {
-  primary: { color: "#0c6e66", weight: 4, opacity: 0.95 },
-  alternate: { color: "#b86e00", weight: 3, opacity: 0.95, dashArray: "2 7" },
-  itinerary: { color: "#17212b", weight: 4.5, opacity: 0.95 },
+  primary: { color: "#0c6e66", weight: 3, opacity: 0.95 },
+  alternate: { color: "#9a5b00", weight: 2.5, opacity: 0.9, dashArray: "10 8" },
+  itinerary: { color: "#17212b", weight: 3.5, opacity: 0.95 },
 };
 
 function pinTone(role: MarkerRole): string {
@@ -93,7 +94,19 @@ export function RouteMap({ model, onPick }: { model: RouteMapModel; onPick?: (ma
     const drawOrder = { alternate: 0, primary: 1, itinerary: 2 };
     const lines = [...model.lines].sort((left, right) => drawOrder[left.kind] - drawOrder[right.kind]);
     for (const line of lines) {
-      L.polyline(line.positions, LINE_STYLE[line.kind]).addTo(group);
+      const style = LINE_STYLE[line.kind];
+      for (const part of splitAtAntimeridian(line.positions)) {
+        if (part.length < 2) continue;
+        L.polyline(part, {
+          color: "#ffffff",
+          weight: style.weight + 4,
+          opacity: 0.92,
+          lineCap: "round",
+          lineJoin: "round",
+          smoothFactor: 0,
+        }).addTo(group);
+        L.polyline(part, { ...style, lineCap: "round", lineJoin: "round", smoothFactor: 0 }).addTo(group);
+      }
     }
 
     const points: Array<[number, number]> = [];

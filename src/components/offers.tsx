@@ -1,6 +1,6 @@
 import type { FlightSegment, Itinerary, PriceObservation } from "@prisma/client";
 import { formatBaggage } from "../domain/baggage";
-import { formatCivilDate, formatConsultation } from "../domain/dates";
+import { formatCivilDate, formatConsultation, isoFromUtcDate } from "../domain/dates";
 import { formatDuration, offerFreshness, passengerLabel, priceKindLabel, stopsLabel } from "../domain/labels";
 import { formatMoney } from "../domain/money";
 import type { AirportCost } from "../domain/trip-cost";
@@ -29,8 +29,10 @@ function toCard(row: Row, now: Date): OfferCard {
     adults: row.adults,
     baggage: formatBaggage(row),
     passengerText: passengerLabel(row.adults, row.childAges.length > 0 ? row.childAges.length : row.hasChildren),
-    departDate: formatCivilDate(row.departDate.toISOString().slice(0, 10)),
-    returnDate: row.returnDate ? formatCivilDate(row.returnDate.toISOString().slice(0, 10)) : null,
+    departDate: formatCivilDate(isoFromUtcDate(row.departDate)),
+    departIso: isoFromUtcDate(row.departDate),
+    returnDate: row.returnDate ? formatCivilDate(isoFromUtcDate(row.returnDate)) : null,
+    returnIso: isoFromUtcDate(row.returnDate),
     origin: row.origin,
     destination: row.destination,
     routeText: `${row.origin} → ${row.destination} · ${stopsLabel(row.stops)} · ${formatDuration(row.itinerary.durationMinutes)}`,

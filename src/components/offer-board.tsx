@@ -5,6 +5,7 @@ import { AIRPORTS } from "../lib/airports";
 import { buildRouteMapModel } from "../lib/route-map";
 import type { PriceKind } from "../domain/provider";
 import type { AirportCost } from "../domain/trip-cost";
+import { googleFlightsUrl } from "../domain/flight-search-link";
 import { describeTripLink } from "../domain/trip-link";
 import { CostComparison, type CostOffer } from "./cost-comparison";
 import { RouteMap } from "./route-map";
@@ -20,7 +21,9 @@ export type OfferCard = {
   baggage: string;
   passengerText: string;
   departDate: string;
+  departIso: string;
   returnDate: string | null;
+  returnIso: string | null;
   origin: string;
   destination: string;
   routeText: string;
@@ -44,15 +47,40 @@ export type OfferCard = {
   }>;
 };
 
-function TripLink({ link, priceKind }: { link: string | null; priceKind: string }) {
-  const trip = describeTripLink(link, priceKind as PriceKind);
-  if (trip.kind === "unavailable") return <p className="muted">{trip.note}</p>;
+function TripLink({ card }: { card: OfferCard }) {
+  const trip = describeTripLink(card.providerLink, card.priceKind as PriceKind);
+  if (trip.kind === "source") {
+    return (
+      <p>
+        <a className="btn" href={trip.href} target="_blank" rel="noopener noreferrer">
+          {trip.label}
+        </a>
+        <span className="muted"> {trip.note}</span>
+      </p>
+    );
+  }
+  const search = googleFlightsUrl({
+    origin: card.origin,
+    destination: card.destination,
+    departDate: card.departIso,
+    returnDate: card.returnIso,
+    currency: card.currency,
+  });
+  if (!search) {
+    if (trip.kind === "unavailable") return <p className="muted">{trip.note}</p>;
+    return (
+      <p>
+        <a href={trip.href}>{trip.label}</a>
+        <span className="muted"> {trip.note}</span>
+      </p>
+    );
+  }
   return (
     <p>
-      <a href={trip.href} target={trip.external ? "_blank" : undefined} rel={trip.external ? "noopener noreferrer" : undefined}>
-        {trip.label}
+      <a className="btn" href={search} target="_blank" rel="noopener noreferrer">
+        Ver os voos desta rota
       </a>
-      <span className="muted"> {trip.note}</span>
+      <span className="muted"> Abre o Google Voos com esta origem, destino e datas. O preço ao vivo está lá. O valor nesta tela continua de demonstração.</span>
     </p>
   );
 }
@@ -99,8 +127,8 @@ export function OfferBoard({
         <h2>Rota no mapa</h2>
         <p className="muted">
           {selected
-            ? "A oferta selecionada desenha a rota, com a conexão quando ela existe. Origem, destino e alternativas continuam marcados."
-            : "A rota escolhida aparece aqui. Selecione uma oferta para ver o caminho e as conexões."}
+            ? "Cada trecho segue o caminho mais curto sobre o globo. A conexão aparece quando a oferta tem escala."
+            : "A rota escolhida aparece aqui. Selecione uma oferta para ver o caminho de cada trecho."}
         </p>
         <RouteMap model={model} />
       </section>
@@ -169,7 +197,7 @@ export function OfferBoard({
                     <button type="button" className={active ? "btn" : "btn btn-secondary"} aria-pressed={active} onClick={() => setSelectedId(card.id)}>
                       {active ? "Rota em destaque no mapa" : "Ver esta rota no mapa"}
                     </button>
-                    <TripLink link={card.providerLink} priceKind={card.priceKind} />
+                    <TripLink card={card} />
                   </article>
                 );
               })}

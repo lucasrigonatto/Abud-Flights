@@ -20,7 +20,28 @@ export function haversineKm(from: LatLng, to: LatLng): number {
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(haversine)));
 }
 
-export function greatCircle(from: LatLng, to: LatLng, steps = 32): Array<[number, number]> {
+export function flightArc(from: LatLng, to: LatLng): Array<[number, number]> {
+  const kilometers = haversineKm(from, to);
+  const steps = Math.min(128, Math.max(24, Math.round(kilometers / 60)));
+  return greatCircle(from, to, steps);
+}
+
+export function splitAtAntimeridian(points: Array<[number, number]>): Array<Array<[number, number]>> {
+  const parts: Array<Array<[number, number]>> = [];
+  let current: Array<[number, number]> = [];
+  for (const point of points) {
+    const previous = current.at(-1);
+    if (previous && Math.abs(point[1] - previous[1]) > 180) {
+      if (current.length > 1) parts.push(current);
+      current = [];
+    }
+    current.push(point);
+  }
+  if (current.length > 1) parts.push(current);
+  return parts.length > 0 ? parts : [points];
+}
+
+export function greatCircle(from: LatLng, to: LatLng, steps = 64): Array<[number, number]> {
   const safeSteps = Math.max(1, steps);
   const latitude1 = toRadians(from.latitude);
   const longitude1 = toRadians(from.longitude);

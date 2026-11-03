@@ -1,4 +1,4 @@
-import { greatCircle, haversineKm } from "./geo";
+import { flightArc, haversineKm } from "./geo";
 import type { AirportRecord } from "./airports";
 
 export const NEARBY_RADIUS_KM = 900;
@@ -107,7 +107,7 @@ export function toggleAlternate(current: readonly string[], iata: string, limit 
 }
 
 function lineBetween(from: AirportRecord, to: AirportRecord, id: string, kind: RouteLine["kind"]): RouteLine {
-  return { id, kind, positions: greatCircle(from, to) };
+  return { id, kind, positions: flightArc(from, to) };
 }
 
 function marker(airport: AirportRecord, role: MarkerRole, distanceKm: number | null, onPath: boolean): RouteMarker {
@@ -161,7 +161,7 @@ export function buildRouteMapModel(input: {
       const from = byIata.get(segment.origin);
       const to = byIata.get(segment.destination);
       if (!from || !to) continue;
-      const arc = greatCircle(from, to);
+      const arc = flightArc(from, to);
       positions.push(...(positions.length > 0 ? arc.slice(1) : arc));
     }
     if (positions.length > 0) lines.push({ id: "itinerary", kind: "itinerary", positions });
