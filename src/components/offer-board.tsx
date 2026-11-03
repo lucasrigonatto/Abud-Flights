@@ -65,6 +65,8 @@ function TripLink({ card }: { card: OfferCard }) {
     departDate: card.departIso,
     returnDate: card.returnIso,
     currency: card.currency,
+    adults: card.adults,
+    segments: card.segments,
   });
   if (!search) {
     if (trip.kind === "unavailable") return <p className="muted">{trip.note}</p>;
@@ -78,9 +80,9 @@ function TripLink({ card }: { card: OfferCard }) {
   return (
     <p>
       <a className="btn" href={search} target="_blank" rel="noopener noreferrer">
-        Ver os voos desta rota
+        Abrir esta passagem
       </a>
-      <span className="muted"> Abre o Google Voos com esta origem, destino e datas. O preço ao vivo está lá. O valor nesta tela continua de demonstração.</span>
+      <span className="muted"> Abre o Google Voos já com os trechos desta oferta. O preço ao vivo aparece lá. O valor nesta tela continua de demonstração.</span>
     </p>
   );
 }
