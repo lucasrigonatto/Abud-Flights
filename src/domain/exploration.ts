@@ -5,7 +5,7 @@ export type PriorSample = {
   origin: string;
   destination: string;
   departDate: string;
-  returnDate: string;
+  returnDate: string | null;
   priceKind: PriceKind;
   totalAmountMinor: number;
   collectedAt: string;
@@ -22,7 +22,7 @@ export type FlexibleRound<T> = {
 };
 
 function comboKey(combination: Combination): string {
-  return `${combination.origin}|${combination.destination}|${combination.departDate}|${combination.returnDate}`;
+  return `${combination.origin}|${combination.destination}|${combination.departDate}|${combination.returnDate ?? ""}`;
 }
 
 export function planFlexibleRound<T extends Combination>(

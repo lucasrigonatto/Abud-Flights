@@ -1,24 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { AIRPORTS } from "../src/lib/airports";
+import { AIRPORTS, CURATED_AIRPORTS } from "../src/lib/airports";
 import { greatCircle, haversineKm } from "../src/lib/geo";
 import { buildRouteMapModel, nearbyAirports, segmentChain, toggleAlternate } from "../src/lib/route-map";
 import { createSimulator } from "../src/providers/simulator";
 
-const gyn = AIRPORTS.find((airport) => airport.iata === "GYN")!;
-const bsb = AIRPORTS.find((airport) => airport.iata === "BSB")!;
-const lis = AIRPORTS.find((airport) => airport.iata === "LIS")!;
+const gyn = CURATED_AIRPORTS.find((airport) => airport.iata === "GYN")!;
+const bsb = CURATED_AIRPORTS.find((airport) => airport.iata === "BSB")!;
+const lis = CURATED_AIRPORTS.find((airport) => airport.iata === "LIS")!;
 
 describe("mapa da rota", () => {
   it("ordena aeroportos próximos de forma estável e deixa Lisboa fora do raio de Goiânia", () => {
-    const first = nearbyAirports(AIRPORTS, gyn, ["GYN"]);
-    const second = nearbyAirports(AIRPORTS, gyn, ["GYN"]);
+    const first = nearbyAirports(CURATED_AIRPORTS, gyn, ["GYN"]);
+    const second = nearbyAirports(CURATED_AIRPORTS, gyn, ["GYN"]);
     expect(first.map((item) => item.airport.iata)).toEqual(second.map((item) => item.airport.iata));
     expect(first[0]?.airport.iata).toBe("BSB");
     expect(first.map((item) => item.airport.iata)).not.toContain("LIS");
     expect(first.every((item) => item.distanceKm <= 900)).toBe(true);
     expect(Math.round(haversineKm(gyn, bsb))).toBe(first[0]?.distanceKm);
 
-    const aroundLisbon = nearbyAirports(AIRPORTS, lis, ["LIS"]).map((item) => item.airport.iata);
+    const aroundLisbon = nearbyAirports(CURATED_AIRPORTS, lis, ["LIS"]).map((item) => item.airport.iata);
     expect(aroundLisbon).toContain("OPO");
     expect(aroundLisbon).toContain("FAO");
     expect(aroundLisbon).not.toContain("GYN");
@@ -29,7 +29,6 @@ describe("mapa da rota", () => {
       airports: AIRPORTS,
       origins: ["xxx", "GYN", "BSB"],
       destinations: ["LIS", "OPO"],
-      showNearby: true,
     });
 
     expect(model.markers.find((marker) => marker.iata === "GYN")?.role).toBe("origin");
@@ -42,7 +41,7 @@ describe("mapa da rota", () => {
     expect(model.markers.find((marker) => marker.iata === "LIS")?.onPath).toBe(true);
     expect(model.markers.find((marker) => marker.iata === "BSB")?.onPath).toBe(true);
     expect(model.markers.find((marker) => marker.iata === "OPO")?.onPath).toBe(true);
-    expect(model.markers.find((marker) => marker.role === "nearby-origin")?.onPath).toBe(false);
+    expect(model.markers.some((marker) => marker.role.startsWith("nearby"))).toBe(false);
     expect(model.lines.map((line) => line.kind)).toEqual(["primary", "alternate", "alternate"]);
     expect(model.lines[0]?.positions[0]?.[0]).toBeCloseTo(gyn.latitude, 4);
     expect(model.lines[0]?.positions.at(-1)?.[0]).toBeCloseTo(lis.latitude, 4);
@@ -82,12 +81,27 @@ describe("mapa da rota", () => {
     expect(arc.at(-1)?.[1]).toBeCloseTo(lis.longitude, 5);
   });
 
-  it("alterna o aeroporto escolhido nos dois campos de alternativa", () => {
-    expect(toggleAlternate(["", ""], "bsb")).toEqual(["BSB", ""]);
-    expect(toggleAlternate(["BSB", ""], "CNF")).toEqual(["BSB", "CNF"]);
-    expect(toggleAlternate(["BSB", "CNF"], "BSB")).toEqual(["", "CNF"]);
-    expect(toggleAlternate(["BSB", "CNF"], "GRU")).toEqual(["BSB", "GRU"]);
+  it("o mapa vazio não inventa aeroporto e a rota parcial mostra só o que foi escolhido", () => {
+    const empty = buildRouteMapModel({ airports: AIRPORTS, origins: ["", "xxx"], destinations: [] });
+    expect(empty.markers).toEqual([]);
+    expect(empty.lines).toEqual([]);
+    expect(empty.summary).toBe("");
+
+    const originOnly = buildRouteMapModel({ airports: AIRPORTS, origins: ["GYN"], destinations: [""] });
+    expect(originOnly.markers.map((marker) => marker.iata)).toEqual(["GYN"]);
+    expect(originOnly.lines).toEqual([]);
+    expect(originOnly.markers.some((marker) => marker.iata === "BSB")).toBe(false);
+    expect(AIRPORTS.some((airport) => airport.iata === "NRT")).toBe(true);
+    expect(AIRPORTS.find((airport) => airport.iata === "GYN")?.latitude).toBe(gyn.latitude);
+  });
+
+  it("guarda até cinco alternativas e remove a escolhida", () => {
+    expect(toggleAlternate(["", ""], "bsb")).toEqual(["BSB"]);
+    expect(toggleAlternate(["BSB"], "CNF")).toEqual(["BSB", "CNF"]);
+    expect(toggleAlternate(["BSB", "CNF"], "BSB")).toEqual(["CNF"]);
+    expect(toggleAlternate(["BSB", "CNF"], "GRU")).toEqual(["BSB", "CNF", "GRU"]);
     expect(toggleAlternate(["BSB", "CNF"], "12")).toEqual(["BSB", "CNF"]);
+    expect(toggleAlternate(["AAA", "BBB", "CCC", "DDD", "EEE"], "FFF")).toEqual(["AAA", "BBB", "CCC", "DDD", "EEE"]);
   });
 
   it("o simulador desenha uma conexão determinística em GYN → LIS", async () => {

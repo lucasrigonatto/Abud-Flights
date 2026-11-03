@@ -69,6 +69,13 @@ enum DateMode {
   @@map("date_mode")
 }
 
+enum TripType {
+  ROUND_TRIP
+  ONE_WAY
+
+  @@map("trip_type")
+}
+
 enum Cabin {
   ECONOMY
   PREMIUM_ECONOMY
@@ -135,14 +142,16 @@ model Monitor {
   origins             String[]
   destinations        String[]
   dateMode            DateMode      @map("date_mode")
+  tripType            TripType      @default(ROUND_TRIP) @map("trip_type")
   departDate          DateTime      @db.Date @map("depart_date")
-  returnDate          DateTime      @db.Date @map("return_date")
+  returnDate          DateTime?     @db.Date @map("return_date")
   flexDays            Int           @map("flex_days")
   adults              Int
   childAges           Int[]         @default([]) @map("child_ages")
+  hasChildren         Boolean       @default(false) @map("has_children")
   cabin               Cabin
   checkedBags         Int?          @map("checked_bags")
-  maxStops            Int           @map("max_stops")
+  maxStops            Int?          @map("max_stops")
   maxDurationMinutes  Int           @map("max_duration_minutes")
   currency            String
   market              String
@@ -179,16 +188,18 @@ model MonitorRevision {
   origins            String[]
   destinations       String[]
   dateMode           DateMode    @map("date_mode")
+  tripType           TripType    @default(ROUND_TRIP) @map("trip_type")
   departDate         DateTime    @db.Date @map("depart_date")
-  returnDate         DateTime    @db.Date @map("return_date")
+  returnDate         DateTime?   @db.Date @map("return_date")
   flexDays           Int         @map("flex_days")
   adults             Int
   childAges          Int[]       @default([]) @map("child_ages")
+  hasChildren        Boolean     @default(false) @map("has_children")
   cabin              Cabin
   checkedBags        Int?        @map("checked_bags")
   currency           String
   market             String
-  maxStops           Int         @map("max_stops")
+  maxStops           Int?        @map("max_stops")
   maxDurationMinutes Int         @map("max_duration_minutes")
   createdAt          DateTime    @default(now()) @map("created_at")
 
@@ -205,15 +216,16 @@ model SearchDefinition {
   providerVersion    String   @map("provider_version")
   origin             String
   destination        String
-  departDate         DateTime @db.Date @map("depart_date")
-  returnDate         DateTime @db.Date @map("return_date")
+  departDate         DateTime  @db.Date @map("depart_date")
+  returnDate         DateTime? @db.Date @map("return_date")
   adults             Int
-  childAges          Int[]    @default([]) @map("child_ages")
+  childAges          Int[]     @default([]) @map("child_ages")
+  hasChildren        Boolean   @default(false) @map("has_children")
   cabin              Cabin
-  checkedBags        Int?     @map("checked_bags")
+  checkedBags        Int?      @map("checked_bags")
   currency           String
   market             String
-  maxStops           Int      @map("max_stops")
+  maxStops           Int?      @map("max_stops")
   maxDurationMinutes Int      @map("max_duration_minutes")
   createdAt          DateTime @default(now()) @map("created_at")
 
@@ -347,11 +359,12 @@ model PriceObservation {
   origin               String
   destination          String
   departDate           DateTime  @db.Date @map("depart_date")
-  returnDate           DateTime  @db.Date @map("return_date")
+  returnDate           DateTime? @db.Date @map("return_date")
   itineraryId          String    @map("itinerary_id")
   stops                Int
   adults               Int
   childAges            Int[]     @default([]) @map("child_ages")
+  hasChildren          Boolean   @default(false) @map("has_children")
   cabin                Cabin
   baggageKnown         Boolean   @map("baggage_known")
   baggageIncluded      Boolean?  @map("baggage_included")

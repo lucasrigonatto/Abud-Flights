@@ -97,14 +97,13 @@ export function nearbyAirports(
     .slice(0, limit);
 }
 
-export function toggleAlternate(current: [string, string], iata: string): [string, string] {
+export function toggleAlternate(current: readonly string[], iata: string, limit = 5): string[] {
+  const compact = current.map(normalizeCode).filter((code) => /^[A-Z]{3}$/.test(code));
   const code = normalizeCode(iata);
-  if (!/^[A-Z]{3}$/.test(code)) return current;
-  if (current[0] === code) return ["", current[1]];
-  if (current[1] === code) return [current[0], ""];
-  if (!current[0]) return [code, current[1]];
-  if (!current[1]) return [current[0], code];
-  return [current[0], code];
+  if (!/^[A-Z]{3}$/.test(code)) return compact;
+  if (compact.includes(code)) return compact.filter((item) => item !== code);
+  if (compact.length >= limit) return compact;
+  return [...compact, code];
 }
 
 function lineBetween(from: AirportRecord, to: AirportRecord, id: string, kind: RouteLine["kind"]): RouteLine {
@@ -129,7 +128,6 @@ export function buildRouteMapModel(input: {
   origins: string[];
   destinations: string[];
   segments?: RouteSegment[];
-  showNearby?: boolean;
 }): RouteMapModel {
   const byIata = new Map(input.airports.map((airport) => [airport.iata, airport]));
   const origins = resolveAirports(input.origins, byIata);
@@ -156,21 +154,6 @@ export function buildRouteMapModel(input: {
     markers.push(marker(airport, "connection", null, true));
   }
 
-  if (input.showNearby) {
-    const chosen = markers.map((item) => item.iata);
-    if (origins[0]) {
-      for (const nearby of nearbyAirports(input.airports, origins[0], chosen)) {
-        markers.push(marker(nearby.airport, "nearby-origin", nearby.distanceKm, false));
-      }
-    }
-    const chosenAfterOrigin = markers.map((item) => item.iata);
-    if (destinations[0]) {
-      for (const nearby of nearbyAirports(input.airports, destinations[0], chosenAfterOrigin)) {
-        markers.push(marker(nearby.airport, "nearby-destination", nearby.distanceKm, false));
-      }
-    }
-  }
-
   const lines: RouteLine[] = [];
   if (segments.length > 0) {
     const positions: Array<[number, number]> = [];
@@ -192,7 +175,16 @@ export function buildRouteMapModel(input: {
     }
   }
 
-  const summary = chain.length > 1 ? chain.join(" → ") : origins[0] && destinations[0] ? `${origins[0].iata} → ${destinations[0].iata}` : "";
+  const summary =
+    chain.length > 1
+      ? chain.join(" → ")
+      : origins[0] && destinations[0]
+        ? `${origins[0].iata} → ${destinations[0].iata}`
+        : origins[0]
+          ? origins[0].iata
+          : destinations[0]
+            ? destinations[0].iata
+            : "";
 
   return { summary, connections, markers, lines };
 }

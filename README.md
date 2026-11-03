@@ -2,7 +2,7 @@
 
 Primeira versão do monitor de passagens. A interface está em português. O único fornecedor é um simulador: todo preço gravado e mostrado é um preço de demonstração, distinto de uma tarifa ao vivo.
 
-A busca é de ida e volta, com datas fixas ou flexibilidade de ±1 ou ±3 dias, e aeroportos alternativos escolhidos manualmente. O monitoramento roda a cada 12 horas num processo worker separado. O estado fica no PostgreSQL, então fechar o navegador ou reiniciar o servidor não apaga os monitoramentos.
+A busca é global: qualquer aeroporto comercial na origem e no destino, ida e volta ou somente ida, datas fixas ou flexibilidade de ±1, ±3 ou ±5 dias, e até cinco aeroportos alternativos de cada lado, escolhidos manualmente. O monitoramento roda a cada 12 horas num processo worker separado. O estado fica no PostgreSQL, então fechar o navegador ou reiniciar o servidor não apaga os monitoramentos.
 
 ## Rodar com Docker Compose
 
@@ -31,7 +31,7 @@ A senha do Postgres no Compose (`abud` / `abud`) é só para uso local.
 - O preço de dois passageiros é o total da oferta para dois passageiros.
 - Alertas de preço-alvo, queda percentual, novo menor preço, economia líquida em aeroporto alternativo, horário de silêncio e resumo diário. No site e na caixa de saída. Sem servidor de e-mail, a cópia fica registrada e não é enviada.
 - Painel de consumo com chamadas, cache, falhas, repetições e custo de demonstração.
-- Mapa da rota com OpenStreetMap: origem, destino, alternativas escolhidas, opções próximas e conexão quando a oferta tem escala.
+- Mapa da rota com OpenStreetMap. Começa vazio e desenha só a origem, o destino e as alternativas escolhidas. A conexão aparece quando a oferta selecionada tem escala.
 - Amostra pequena mostra “Histórico insuficiente.”
 - O simulador não tem URL da companhia. O encaminhamento fica marcado como link de demonstração e não abre uma página de compra.
 

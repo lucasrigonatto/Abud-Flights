@@ -74,7 +74,8 @@ export type ObservationDraft = {
   origin: string;
   destination: string;
   departDate: string;
-  returnDate: string;
+  returnDate: string | null;
+  hasChildren?: boolean;
   itineraryKey: string;
   stops: number;
   durationMinutes: number;

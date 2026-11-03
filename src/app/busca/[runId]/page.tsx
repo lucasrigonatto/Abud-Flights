@@ -6,7 +6,6 @@ import { HistoryPanel, historyForSearch } from "../../../components/history-pane
 import { Limitations } from "../../../components/limitations";
 import { OfferList } from "../../../components/offers";
 import { requireUser } from "../../../lib/auth";
-import { AIRPORTS } from "../../../lib/airports";
 import { prisma } from "../../../infra/prisma";
 
 export default async function SearchResultPage({ params }: { params: Promise<{ runId: string }> }) {
@@ -45,7 +44,7 @@ export default async function SearchResultPage({ params }: { params: Promise<{ r
           {run.combinationsQueried} de {run.combinationsPlanned} combinações consultadas nesta rodada. Cada rodada tem um teto de combinações. Sem histórico anterior, a consulta segue a fila. Com histórico, a rodada confirma primeiro as combinações já precificadas e deixa o restante da cota para as menos consultadas. Não há calendário indicativo autorizado, então nenhum preço indicativo é inventado.
         </p>
       </section>
-      <OfferList rows={rows} now={new Date()} airports={AIRPORTS} />
+      <OfferList rows={rows} now={new Date()} />
       {rows.length === 0 && run.status !== "FAILED" ? <p>Nenhuma oferta foi gravada nesta consulta.</p> : null}
       <HistoryPanel rows={historyForSearch(rows, history)} filtersVersion={0} title="Histórico comparável" />
       <Limitations />

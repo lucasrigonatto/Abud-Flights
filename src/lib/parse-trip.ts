@@ -5,7 +5,6 @@ import type { BudgetScope, Cabin, MonitorCriteria } from "../domain/provider";
 
 const CABINS = new Set<Cabin>(["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]);
 const CURRENCIES = new Set(["BRL", "EUR", "USD"]);
-const DURATIONS = new Set([8, 12, 20, 30]);
 
 export type GroundCostDraft = {
   airport: string;
@@ -34,23 +33,19 @@ export function parseTripForm(
   mode: "search" | "monitor",
   today = isoDateInTimeZone(new Date()),
 ): { ok: true; value: ParsedTrip } | { ok: false; error: string } {
-  const origins = uniqueCodes([
-    readCode(formData, "origin"),
-    readCode(formData, "originAlt1"),
-    readCode(formData, "originAlt2"),
-  ]);
+  const tripTypeRaw = String(formData.get("tripType") ?? "ROUND_TRIP");
+  if (tripTypeRaw !== "ROUND_TRIP" && tripTypeRaw !== "ONE_WAY") {
+    return { ok: false, error: "Escolha ida e volta ou somente ida." };
+  }
+  const origins = uniqueCodes(listedCodes(formData, "origin", "originAlt"));
   if (!origins.ok) return origins;
-  const destinations = uniqueCodes([
-    readCode(formData, "destination"),
-    readCode(formData, "destinationAlt1"),
-    readCode(formData, "destinationAlt2"),
-  ]);
+  const destinations = uniqueCodes(listedCodes(formData, "destination", "destinationAlt"));
   if (!destinations.ok) return destinations;
   if (origins.codes.length === 0 || destinations.codes.length === 0) {
     return { ok: false, error: "Informe a origem e o destino." };
   }
   if (origins.codes.length > LIMITS.maxAirportsPerSide || destinations.codes.length > LIMITS.maxAirportsPerSide) {
-    return { ok: false, error: "Escolha no máximo dois aeroportos alternativos de cada lado." };
+    return { ok: false, error: "Escolha no máximo cinco aeroportos alternativos de cada lado." };
   }
   const unknown = [...origins.codes, ...destinations.codes].find((code) => !validIatas.has(code));
   if (unknown) return { ok: false, error: `O aeroporto ${unknown} não está na lista disponível.` };
@@ -59,28 +54,28 @@ export function parseTripForm(
   }
 
   const departDate = String(formData.get("departDate") ?? "");
-  const returnDate = String(formData.get("returnDate") ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(departDate) || !/^\d{4}-\d{2}-\d{2}$/.test(returnDate)) {
-    return { ok: false, error: "Informe as datas de ida e volta." };
-  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(departDate)) return { ok: false, error: "Informe a data de ida." };
   if (departDate < today) return { ok: false, error: "A data de ida já passou." };
-  if (returnDate <= departDate) return { ok: false, error: "A volta precisa ser depois da ida." };
   const horizon = shiftDate(today, 730);
-  if (departDate > horizon || returnDate > horizon) {
-    return { ok: false, error: "As datas precisam estar nos próximos dois anos." };
+  if (departDate > horizon) return { ok: false, error: "As datas precisam estar nos próximos dois anos." };
+  let returnDate: string | null = null;
+  if (tripTypeRaw === "ROUND_TRIP") {
+    returnDate = String(formData.get("returnDate") ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(returnDate)) return { ok: false, error: "Informe a data de volta." };
+    if (returnDate <= departDate) return { ok: false, error: "A volta precisa ser depois da ida." };
+    if (returnDate > horizon) return { ok: false, error: "As datas precisam estar nos próximos dois anos." };
   }
 
   const flexDays = Number(formData.get("flexDays") ?? 0);
   if (!LIMITS.allowedFlexDays.includes(flexDays as (typeof LIMITS.allowedFlexDays)[number])) {
-    return { ok: false, error: "A flexibilidade disponível é de datas fixas, ±1 dia ou ±3 dias." };
+    return { ok: false, error: "A flexibilidade disponível é de datas fixas, ±1 dia, ±3 dias ou ±5 dias." };
   }
 
   const adults = Number(formData.get("adults") ?? 1);
   if (!Number.isInteger(adults) || adults < 1 || adults > LIMITS.maxAdults) {
     return { ok: false, error: "Informe de 1 a 6 adultos." };
   }
-  const childAges = parseAges(String(formData.get("childAges") ?? ""));
-  if (!childAges.ok) return childAges;
+  const hasChildren = String(formData.get("hasChildren") ?? "0") === "1";
 
   const cabin = String(formData.get("cabin") ?? "ECONOMY") as Cabin;
   if (!CABINS.has(cabin)) return { ok: false, error: "Escolha a cabine." };
@@ -98,26 +93,32 @@ export function parseTripForm(
   const market = String(formData.get("market") ?? "BR").toUpperCase();
   if (!/^[A-Z]{2}$/.test(market)) return { ok: false, error: "Informe o mercado de venda com duas letras." };
 
-  const maxStops = Number(formData.get("maxStops") ?? 1);
-  if (![0, 1, 2].includes(maxStops)) return { ok: false, error: "O limite de conexões é 0, 1 ou 2." };
-  const durationHours = Number(formData.get("maxDurationHours") ?? 20);
-  if (!DURATIONS.has(durationHours)) return { ok: false, error: "Escolha a duração máxima por sentido." };
+  const stopsRaw = String(formData.get("maxStops") ?? "").trim();
+  let maxStops: number | null = null;
+  if (stopsRaw !== "" && stopsRaw !== "none") {
+    if (stopsRaw !== "1" && stopsRaw !== "2") {
+      return { ok: false, error: "As conexões podem ser até 1, até 2 ou sem limite." };
+    }
+    maxStops = Number(stopsRaw);
+  }
 
   const criteria: MonitorCriteria = {
     origins: origins.codes,
     destinations: destinations.codes,
     dateMode: flexDays === 0 ? "FIXED" : "FLEX",
+    tripType: tripTypeRaw,
     departDate,
     returnDate,
     flexDays,
     adults,
-    childAges: childAges.ages,
+    childAges: [],
+    hasChildren,
     cabin,
     checkedBags,
     currency,
     market,
     maxStops,
-    maxDurationMinutes: durationHours * 60,
+    maxDurationMinutes: LIMITS.noDurationLimitMinutes,
   };
 
   const extras = parseExtras(formData, [...origins.codes, ...destinations.codes], currency);
@@ -255,14 +256,13 @@ function parseExtras(
   };
 }
 
-function readCode(formData: FormData, field: string): string {
-  return String(formData.get(field) ?? "")
-    .trim()
-    .toUpperCase();
+function listedCodes(formData: FormData, primary: string, repeated: string): string[] {
+  const numbered = [1, 2, 3, 4, 5].map((index) => String(formData.get(`${repeated}${index}`) ?? ""));
+  return [String(formData.get(primary) ?? ""), ...formData.getAll(repeated).map((value) => String(value)), ...numbered];
 }
 
 function uniqueCodes(codes: string[]): { ok: true; codes: string[] } | { ok: false; error: string } {
-  const present = codes.filter((code) => code.length > 0);
+  const present = codes.map((code) => code.trim().toUpperCase()).filter((code) => code.length > 0);
   for (const code of present) {
     if (!/^[A-Z]{3}$/.test(code)) return { ok: false, error: `Use o código IATA de três letras. “${code}” não serve.` };
   }
@@ -273,19 +273,3 @@ function uniqueCodes(codes: string[]): { ok: true; codes: string[] } | { ok: fal
   return { ok: true, codes: unique };
 }
 
-function parseAges(value: string): { ok: true; ages: number[] } | { ok: false; error: string } {
-  const trimmed = value.trim();
-  if (!trimmed) return { ok: true, ages: [] };
-  const parts = trimmed.split(/[,\s]+/).filter(Boolean);
-  if (parts.length > LIMITS.maxChildren) {
-    return { ok: false, error: `Informe no máximo ${LIMITS.maxChildren} crianças.` };
-  }
-  const ages: number[] = [];
-  for (const part of parts) {
-    if (!/^\d{1,2}$/.test(part)) return { ok: false, error: "As idades das crianças são números de 0 a 17." };
-    const age = Number(part);
-    if (age > 17) return { ok: false, error: "As idades das crianças são números de 0 a 17." };
-    ages.push(age);
-  }
-  return { ok: true, ages };
-}

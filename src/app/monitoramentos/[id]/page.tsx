@@ -13,7 +13,6 @@ import { OfferList } from "../../../components/offers";
 import { TripForm, type TripDefaults } from "../../../components/trip-form";
 import { criteriaFromMonitor } from "../../../infra/run-monitor";
 import { requireUser } from "../../../lib/auth";
-import { AIRPORTS } from "../../../lib/airports";
 import { prisma } from "../../../infra/prisma";
 
 export default async function MonitorDetailPage({
@@ -82,24 +81,24 @@ export default async function MonitorDetailPage({
   const today = isoDateInTimeZone(new Date());
   const planned = buildCombinations(criteriaFromMonitor(monitor), today).length;
   const sharedSample = shared.reduce((sum, stat) => sum + stat.sampleCount, 0);
+  const departLabel = formatCivilDate(isoFromUtcDate(monitor.departDate));
+  const returnLabel = monitor.returnDate ? formatCivilDate(isoFromUtcDate(monitor.returnDate)) : null;
   const defaults: TripDefaults = {
+    tripType: monitor.tripType,
     origin: monitor.origins[0] ?? "",
-    originAlt1: monitor.origins[1] ?? "",
-    originAlt2: monitor.origins[2] ?? "",
+    originAlts: monitor.origins.slice(1, 6),
     destination: monitor.destinations[0] ?? "",
-    destinationAlt1: monitor.destinations[1] ?? "",
-    destinationAlt2: monitor.destinations[2] ?? "",
+    destinationAlts: monitor.destinations.slice(1, 6),
     departDate: isoFromUtcDate(monitor.departDate),
-    returnDate: isoFromUtcDate(monitor.returnDate),
+    returnDate: returnLabel ? isoFromUtcDate(monitor.returnDate) ?? "" : "",
     flexDays: monitor.flexDays,
     adults: monitor.adults,
-    childAges: monitor.childAges.join(", "),
+    hasChildren: monitor.hasChildren || monitor.childAges.length > 0,
     cabin: monitor.cabin,
     bags: monitor.checkedBags === null ? "unset" : String(monitor.checkedBags),
     currency: monitor.currency,
     market: monitor.market,
-    maxStops: monitor.maxStops,
-    maxDurationHours: Math.round(monitor.maxDurationMinutes / 60),
+    maxStops: monitor.maxStops === 1 || monitor.maxStops === 2 ? monitor.maxStops : null,
     name: monitor.name,
     monitorUntil: inclusiveUntilDate(monitor.monitorUntil),
     targetAmount: rule ? minorToInput(rule.targetAmountMinor, rule.currency) : "",
@@ -121,12 +120,13 @@ export default async function MonitorDetailPage({
         <p className="eyebrow">{monitorStatusLabel(monitor.status)}</p>
         <h1>{monitor.name}</h1>
         <p>
-          {monitor.origins.join(", ")} → {monitor.destinations.join(", ")} · ida {formatCivilDate(isoFromUtcDate(monitor.departDate))} · volta{" "}
-          {formatCivilDate(isoFromUtcDate(monitor.returnDate))} · {monitor.dateMode === "FIXED" ? "datas fixas" : `flexibilidade de ±${monitor.flexDays} dias`}
+          {monitor.origins.join(", ")} → {monitor.destinations.join(", ")} · {returnLabel ? `ida ${departLabel} · volta ${returnLabel}` : `somente ida ${departLabel}`} ·{" "}
+          {monitor.dateMode === "FIXED" ? "datas fixas" : `flexibilidade de ±${monitor.flexDays} dias`} ·{" "}
+          {monitor.maxStops === 1 || monitor.maxStops === 2 ? `até ${monitor.maxStops} ${monitor.maxStops === 1 ? "conexão" : "conexões"}` : "conexões sem limite"}
         </p>
         <p>
           {monitor.adults} {monitor.adults === 1 ? "adulto" : "adultos"}
-          {monitor.childAges.length ? ` · crianças: ${monitor.childAges.join(", ")}` : ""} · {cabinLabel(monitor.cabin)} · critérios versão {monitor.filtersVersion}
+          {monitor.hasChildren || monitor.childAges.length > 0 ? " · com crianças" : ""} · {cabinLabel(monitor.cabin)} · critérios versão {monitor.filtersVersion}
         </p>
         {rule ? (
           <p>
@@ -177,7 +177,6 @@ export default async function MonitorDetailPage({
       <OfferList
         rows={latestOffers}
         now={new Date()}
-        airports={AIRPORTS}
         route={{ origins: monitor.origins, destinations: monitor.destinations }}
         costSeed={{
           requiredBags: monitor.checkedBags,
@@ -267,7 +266,10 @@ export default async function MonitorDetailPage({
             {monitor.revisions.map((revision) => (
               <li key={revision.id}>
                 Versão {revision.filtersVersion}: {revision.origins.join(", ")} → {revision.destinations.join(", ")}, {revision.adults} adultos,{" "}
-                {formatCivilDate(isoFromUtcDate(revision.departDate))} a {formatCivilDate(isoFromUtcDate(revision.returnDate))}.
+                {revision.returnDate
+                  ? `${formatCivilDate(isoFromUtcDate(revision.departDate))} a ${formatCivilDate(isoFromUtcDate(revision.returnDate))}`
+                  : `somente ida em ${formatCivilDate(isoFromUtcDate(revision.departDate))}`}
+                .
               </li>
             ))}
           </ul>
@@ -309,7 +311,6 @@ export default async function MonitorDetailPage({
           <TripForm
             key={`${monitor.id}-${monitor.filtersVersion}`}
             action={updateMonitorAction}
-            airports={AIRPORTS}
             defaults={defaults}
             mode="monitor"
             submitLabel="Salvar filtros"

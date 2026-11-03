@@ -4,6 +4,7 @@ export function Limitations() {
       <h2>Cobertura e limitações</h2>
       <ul>
         <li>Os preços do simulador são de demonstração. Eles não são tarifas ao vivo.</li>
+        <li>A busca aceita aeroportos comerciais do mundo inteiro. O mapa mostra só os aeroportos escolhidos.</li>
         <li>Cada monitoramento consulta de novo a cada 12 horas. Promoções mais curtas podem passar sem alerta.</li>
         <li>Quando a rodada não cobre todas as combinações, o menor preço vale só entre as opções consultadas.</li>
         <li>Bagagem desconhecida aparece como “não informado” e nunca como incluída.</li>

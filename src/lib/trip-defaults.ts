@@ -1,24 +1,23 @@
 import { shiftDate } from "../domain/dates";
 import { minorToInput } from "../domain/money";
+import type { TripType } from "../domain/provider";
 
 export type TripDefaults = {
+  tripType: TripType;
   origin: string;
-  originAlt1: string;
-  originAlt2: string;
+  originAlts: string[];
   destination: string;
-  destinationAlt1: string;
-  destinationAlt2: string;
+  destinationAlts: string[];
   departDate: string;
   returnDate: string;
   flexDays: number;
   adults: number;
-  childAges: string;
+  hasChildren: boolean;
   cabin: string;
   bags: string;
   currency: string;
   market: string;
-  maxStops: number;
-  maxDurationHours: number;
+  maxStops: number | null;
   name: string;
   monitorUntil: string;
   targetAmount: string;
@@ -33,24 +32,22 @@ export type TripDefaults = {
 
 export function blankTrip(input: { currency: string; market: string; today: string }): TripDefaults {
   return {
-    origin: "GYN",
-    originAlt1: "",
-    originAlt2: "",
-    destination: "LIS",
-    destinationAlt1: "",
-    destinationAlt2: "",
+    tripType: "ROUND_TRIP",
+    origin: "",
+    originAlts: [],
+    destination: "",
+    destinationAlts: [],
     departDate: shiftDate(input.today, 40),
     returnDate: shiftDate(input.today, 52),
     flexDays: 0,
     adults: 1,
-    childAges: "",
+    hasChildren: false,
     cabin: "ECONOMY",
     bags: "1",
     currency: input.currency || "BRL",
     market: input.market || "BR",
-    maxStops: 1,
-    maxDurationHours: 20,
-    name: "GYN → LIS",
+    maxStops: null,
+    name: "",
     monitorUntil: shiftDate(input.today, 90),
     targetAmount: "8000,00",
     budgetScope: "TOTAL",

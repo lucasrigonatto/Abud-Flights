@@ -6,6 +6,8 @@ export type BudgetScope = "TOTAL" | "PER_PERSON";
 
 export type DateMode = "FIXED" | "FLEX";
 
+export type TripType = "ROUND_TRIP" | "ONE_WAY";
+
 export type Segment = {
   origin: string;
   destination: string;
@@ -26,14 +28,15 @@ export type ProviderQuery = {
   origin: string;
   destination: string;
   departDate: string;
-  returnDate: string;
+  returnDate: string | null;
   adults: number;
   childAges: number[];
+  hasChildren?: boolean;
   cabin: Cabin;
   checkedBags: number | null;
   currency: string;
   market: string;
-  maxStops: number;
+  maxStops: number | null;
   maxDurationMinutes: number;
 };
 
@@ -85,15 +88,17 @@ export type MonitorCriteria = {
   origins: string[];
   destinations: string[];
   dateMode: DateMode;
+  tripType?: TripType;
   departDate: string;
-  returnDate: string;
+  returnDate: string | null;
   flexDays: number;
   adults: number;
   childAges: number[];
+  hasChildren?: boolean;
   cabin: Cabin;
   checkedBags: number | null;
   currency: string;
   market: string;
-  maxStops: number;
+  maxStops: number | null;
   maxDurationMinutes: number;
 };

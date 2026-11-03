@@ -2,13 +2,16 @@
 
 import { useActionState, useMemo, useState } from "react";
 import type { ActionState } from "../app/actions";
-import type { AirportRecord } from "../lib/airports";
-import { airportLabel } from "../lib/airports";
-import { buildRouteMapModel, toggleAlternate, type RouteMarker } from "../lib/route-map";
+import type { TripType } from "../domain/provider";
+import { AIRPORTS } from "../lib/airports";
+import { buildRouteMapModel, type RouteMarker } from "../lib/route-map";
 import type { TripDefaults } from "../lib/trip-defaults";
+import { AirportField } from "./airport-field";
 import { RouteMap } from "./route-map";
 
 export type { TripDefaults };
+
+const MAX_ALTERNATES = 5;
 
 function GroundCostFields({
   airports,
@@ -17,7 +20,7 @@ function GroundCostFields({
   airports: string[];
   saved: TripDefaults["groundCosts"];
 }) {
-  const codes = [...new Set(airports.map(codeValue).filter((code) => code.length === 3))];
+  const codes = [...new Set(airports.map((code) => code.trim().toUpperCase()).filter((code) => code.length === 3))];
   if (codes.length === 0) return null;
   return (
     <div className="stack">
@@ -51,60 +54,83 @@ function GroundCostFields({
   );
 }
 
-function codeValue(value: string): string {
-  return value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+function AlternateList({
+  name,
+  label,
+  values,
+  onChange,
+}: {
+  name: string;
+  label: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+}) {
+  return (
+    <div className="stack">
+      {values.map((value, index) => (
+        <div key={`${name}-${index}`} className="alt-row">
+          <label>
+            {label} {index + 1}
+            <AirportField name={name} value={value} onChange={(iata) => onChange(values.map((item, itemIndex) => (itemIndex === index ? iata : item)))} />
+          </label>
+          <button type="button" className="btn btn-secondary" onClick={() => onChange(values.filter((_, itemIndex) => itemIndex !== index))}>
+            Remover
+          </button>
+        </div>
+      ))}
+      {values.length < MAX_ALTERNATES ? (
+        <button type="button" className="btn btn-secondary" onClick={() => onChange([...values, ""])}>
+          Adicionar {label.toLowerCase()}
+        </button>
+      ) : (
+        <p className="muted">Limite de cinco alternativas neste lado.</p>
+      )}
+    </div>
+  );
 }
 
 export function TripForm({
   action,
-  airports,
   requestKey,
   defaults,
   mode,
   submitLabel,
 }: {
   action: (previous: ActionState, formData: FormData) => Promise<ActionState>;
-  airports: AirportRecord[];
   requestKey?: string;
   defaults: TripDefaults;
   mode: "search" | "monitor";
   submitLabel: string;
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
+  const [tripType, setTripType] = useState<TripType>(defaults.tripType);
   const [origin, setOrigin] = useState(defaults.origin);
-  const [originAlts, setOriginAlts] = useState<[string, string]>([defaults.originAlt1, defaults.originAlt2]);
+  const [originAlts, setOriginAlts] = useState(defaults.originAlts.slice(0, MAX_ALTERNATES));
   const [destination, setDestination] = useState(defaults.destination);
-  const [destinationAlts, setDestinationAlts] = useState<[string, string]>([defaults.destinationAlt1, defaults.destinationAlt2]);
+  const [destinationAlts, setDestinationAlts] = useState(defaults.destinationAlts.slice(0, MAX_ALTERNATES));
+  const [returnDate, setReturnDate] = useState(defaults.returnDate);
+  const stopsValue = defaults.maxStops === 1 || defaults.maxStops === 2 ? String(defaults.maxStops) : "";
 
   const model = useMemo(
     () =>
       buildRouteMapModel({
-        airports,
-        origins: [origin, originAlts[0], originAlts[1]],
-        destinations: [destination, destinationAlts[0], destinationAlts[1]],
-        showNearby: true,
+        airports: AIRPORTS,
+        origins: [origin, ...originAlts],
+        destinations: [destination, ...destinationAlts],
       }),
-    [airports, destination, destinationAlts, origin, originAlts],
+    [destination, destinationAlts, origin, originAlts],
   );
 
   function pick(marker: RouteMarker) {
-    if (marker.role === "nearby-origin") {
-      if (!origin) setOrigin(marker.iata);
-      else setOriginAlts((current) => toggleAlternate(current, marker.iata));
-      return;
-    }
-    if (marker.role === "alternate-origin") {
-      setOriginAlts((current) => toggleAlternate(current, marker.iata));
-      return;
-    }
-    if (marker.role === "nearby-destination") {
-      if (!destination) setDestination(marker.iata);
-      else setDestinationAlts((current) => toggleAlternate(current, marker.iata));
-      return;
-    }
-    if (marker.role === "alternate-destination") {
-      setDestinationAlts((current) => toggleAlternate(current, marker.iata));
-    }
+    if (marker.role === "alternate-origin") setOriginAlts((current) => current.filter((code) => code !== marker.iata));
+    if (marker.role === "alternate-destination") setDestinationAlts((current) => current.filter((code) => code !== marker.iata));
+  }
+
+  function swapEnds() {
+    setOrigin(destination);
+    setDestination(origin);
+    setOriginAlts(destinationAlts);
+    setDestinationAlts(originAlts);
   }
 
   return (
@@ -117,72 +143,99 @@ export function TripForm({
           {mode === "monitor" ? (
             <label className="card field-block">
               Nome
-              <input name="name" defaultValue={defaults.name} maxLength={80} />
+              <input name="name" defaultValue={defaults.name} maxLength={80} placeholder="Nome do acompanhamento" />
             </label>
           ) : null}
-          <fieldset className="card fields">
-            <legend>Rota</legend>
-            <div className="route-columns">
-              <div className="stack">
-                <p className="field-kicker">Saída</p>
-                <label>
-                  Origem
-                  <input name="origin" list="airports" value={origin} required placeholder="GYN" autoComplete="off" spellCheck={false} onChange={(event) => setOrigin(codeValue(event.target.value))} />
-                </label>
-                <label>
-                  Origem alternativa
-                  <input name="originAlt1" list="airports" value={originAlts[0]} placeholder="BSB" autoComplete="off" spellCheck={false} onChange={(event) => setOriginAlts([codeValue(event.target.value), originAlts[1]])} />
-                </label>
-                <label>
-                  Outra origem
-                  <input name="originAlt2" list="airports" value={originAlts[1]} autoComplete="off" spellCheck={false} onChange={(event) => setOriginAlts([originAlts[0], codeValue(event.target.value)])} />
-                </label>
-              </div>
-              <div className="stack">
-                <p className="field-kicker">Chegada</p>
-                <label>
-                  Destino
-                  <input name="destination" list="airports" value={destination} required placeholder="LIS" autoComplete="off" spellCheck={false} onChange={(event) => setDestination(codeValue(event.target.value))} />
-                </label>
-                <label>
-                  Destino alternativo
-                  <input name="destinationAlt1" list="airports" value={destinationAlts[0]} placeholder="OPO" autoComplete="off" spellCheck={false} onChange={(event) => setDestinationAlts([codeValue(event.target.value), destinationAlts[1]])} />
-                </label>
-                <label>
-                  Outro destino
-                  <input name="destinationAlt2" list="airports" value={destinationAlts[1]} autoComplete="off" spellCheck={false} onChange={(event) => setDestinationAlts([destinationAlts[0], codeValue(event.target.value)])} />
-                </label>
-              </div>
+          <fieldset className="card fields search-band">
+            <legend>Viagem</legend>
+            <div className="trip-switch" role="radiogroup" aria-label="Tipo de viagem">
+              <label>
+                <input type="radio" name="tripType" value="ROUND_TRIP" checked={tripType === "ROUND_TRIP"} onChange={() => setTripType("ROUND_TRIP")} />
+                <span>Ida e volta</span>
+              </label>
+              <label>
+                <input type="radio" name="tripType" value="ONE_WAY" checked={tripType === "ONE_WAY"} onChange={() => setTripType("ONE_WAY")} />
+                <span>Somente ida</span>
+              </label>
             </div>
-            <p className="muted">Os aeroportos alternativos são escolhidos manualmente. Não há busca por raio.</p>
-          </fieldset>
-          <fieldset className="card fields">
-            <legend>Datas e passageiros</legend>
+            <p className="muted">
+              {tripType === "ONE_WAY"
+                ? "Somente ida acompanha o voo de saída. A data de volta não é pedida, nem uma segunda origem ou um segundo destino."
+                : "Ida e volta inclui o retorno. Origem e destino alternativos continuam opcionais."}
+            </p>
+            <div className="search-route">
+              <label>
+                Origem
+                <AirportField name="origin" value={origin} required placeholder="Qualquer aeroporto" onChange={setOrigin} />
+              </label>
+              <button type="button" className="btn btn-secondary swap" onClick={swapEnds} aria-label="Trocar origem e destino">
+                Trocar
+              </button>
+              <label>
+                Destino
+                <AirportField name="destination" value={destination} required placeholder="Qualquer aeroporto" onChange={setDestination} />
+              </label>
+            </div>
             <div className="form-grid">
               <label>
                 Ida
                 <input type="date" name="departDate" defaultValue={defaults.departDate} required />
               </label>
-              <label>
-                Volta
-                <input type="date" name="returnDate" defaultValue={defaults.returnDate} required />
-              </label>
+              {tripType === "ROUND_TRIP" ? (
+                <label>
+                  Volta
+                  <input type="date" name="returnDate" value={returnDate} required onChange={(event) => setReturnDate(event.target.value)} />
+                </label>
+              ) : null}
               <label>
                 Flexibilidade
                 <select name="flexDays" defaultValue={String(defaults.flexDays)}>
                   <option value="0">Datas fixas</option>
                   <option value="1">±1 dia</option>
                   <option value="3">±3 dias</option>
+                  <option value="5">±5 dias</option>
                 </select>
               </label>
               <label>
                 Adultos
                 <input type="number" name="adults" min={1} max={6} defaultValue={defaults.adults} required />
               </label>
+              <fieldset className="choice-set">
+                <legend>Crianças</legend>
+                <div className="choice-row">
+                  <label className="check">
+                    <input type="radio" name="hasChildren" value="0" defaultChecked={!defaults.hasChildren} />
+                    Não
+                  </label>
+                  <label className="check">
+                    <input type="radio" name="hasChildren" value="1" defaultChecked={defaults.hasChildren} />
+                    Sim
+                  </label>
+                </div>
+                <p className="muted">Informe só se há crianças na viagem. A idade não entra nesta pesquisa.</p>
+              </fieldset>
               <label>
-                Idades das crianças
-                <input name="childAges" defaultValue={defaults.childAges} placeholder="vazio, ou 4, 9" />
+                Conexões
+                <select name="maxStops" defaultValue={stopsValue}>
+                  <option value="">Sem limite</option>
+                  <option value="1">Até 1 conexão</option>
+                  <option value="2">Até 2 conexões</option>
+                </select>
               </label>
+            </div>
+            <p className="muted">Sem limite é o padrão. Até 1 ou até 2 restringe as conexões de cada sentido.</p>
+          </fieldset>
+          <fieldset className="card fields">
+            <legend>Aeroportos alternativos</legend>
+            <p className="muted">Os aeroportos alternativos são escolhidos manualmente. Não há busca por raio. Até cinco de cada lado.</p>
+            <div className="route-columns">
+              <AlternateList name="originAlt" label="Origem alternativa" values={originAlts} onChange={setOriginAlts} />
+              <AlternateList name="destinationAlt" label="Destino alternativo" values={destinationAlts} onChange={setDestinationAlts} />
+            </div>
+          </fieldset>
+          <fieldset className="card fields">
+            <legend>Filtros da consulta</legend>
+            <div className="form-grid">
               <label>
                 Cabine
                 <select name="cabin" defaultValue={defaults.cabin}>
@@ -192,11 +245,6 @@ export function TripForm({
                   <option value="FIRST">Primeira classe</option>
                 </select>
               </label>
-            </div>
-          </fieldset>
-          <fieldset className="card fields">
-            <legend>Filtros da consulta</legend>
-            <div className="form-grid">
               <label>
                 Mala despachada desejada
                 <select name="bags" defaultValue={defaults.bags}>
@@ -214,32 +262,18 @@ export function TripForm({
                   <option value="USD">USD</option>
                 </select>
               </label>
-              <label>
+              <label htmlFor="market">
                 Mercado
-                <select name="market" defaultValue={defaults.market}>
-                  <option value="BR">BR</option>
-                  <option value="PT">PT</option>
-                  <option value="US">US</option>
-                </select>
-              </label>
-              <label>
-                Máximo de conexões
-                <select name="maxStops" defaultValue={String(defaults.maxStops)}>
-                  <option value="0">Somente voo direto</option>
-                  <option value="1">Até 1 conexão</option>
-                  <option value="2">Até 2 conexões</option>
-                </select>
-              </label>
-              <label>
-                Duração máxima por sentido
-                <select name="maxDurationHours" defaultValue={String(defaults.maxDurationHours)}>
-                  <option value="8">8 horas</option>
-                  <option value="12">12 horas</option>
-                  <option value="20">20 horas</option>
-                  <option value="30">30 horas</option>
+                <select id="market" name="market" defaultValue={defaults.market} aria-describedby="market-help">
+                  <option value="BR">Brasil</option>
+                  <option value="PT">Portugal</option>
+                  <option value="US">Estados Unidos</option>
                 </select>
               </label>
             </div>
+            <p id="market-help" className="field-help">
+              Mercado é o país em que a passagem é vendida. A mesma rota pode ter preço diferente no Brasil, em Portugal ou nos Estados Unidos, porque a tarifa muda conforme o ponto de venda. A comparação usa o mercado escolhido aqui.
+            </p>
           </fieldset>
           {mode === "monitor" ? (
             <fieldset className="card fields">
@@ -278,17 +312,15 @@ export function TripForm({
                 Avisar quando surgir um preço menor que o menor já visto neste monitoramento
               </label>
               <input type="hidden" name="alertFields" value="1" />
-              <GroundCostFields
-                airports={[origin, originAlts[0], originAlts[1], destination, destinationAlts[0], destinationAlts[1]]}
-                saved={defaults.groundCosts}
-              />
+              <GroundCostFields airports={[origin, ...originAlts, destination, ...destinationAlts]} saved={defaults.groundCosts} />
               <p className="notice">
                 A frequência é fixa: uma rodada a cada 12 horas, no servidor, mesmo com o navegador fechado. Uma rodada nesse intervalo pode perder promoções mais curtas.
                 Cada rodada consulta no máximo 8 combinações. Com histórico, a rodada confirma primeiro as combinações que já têm preço e usa o restante da cota para datas e aeroportos ainda pouco consultados. Sem calendário indicativo autorizado, nenhum preço indicativo é inventado. Se a rodada não cobrir tudo, o menor preço é o menor entre as opções consultadas.
+                {tripType === "ONE_WAY" ? " Somente ida monitora o trecho de saída." : ""}
               </p>
             </fieldset>
           ) : (
-            <p className="notice">A busca é de ida e volta. O resultado traz preços de demonstração, com a data da consulta.</p>
+            <p className="notice">O resultado traz preços de demonstração, com a data da consulta. A Abud Flights não vende a passagem.</p>
           )}
           <button className="btn" type="submit" disabled={pending}>
             {pending ? "Consultando…" : submitLabel}
@@ -296,17 +328,10 @@ export function TripForm({
         </div>
         <aside className="card planner-map stack">
           <h2>Rota no mapa</h2>
-          <p className="muted">Clique num aeroporto próximo para escolhê-lo como alternativa. A linha cheia é a rota principal; a tracejada é a alternativa.</p>
+          <p className="muted">O mapa começa vazio. A rota é desenhada com a origem, o destino e as alternativas que você escolher. Aeroportos não escolhidos não aparecem.</p>
           <RouteMap model={model} onPick={pick} />
         </aside>
       </div>
-      <datalist id="airports">
-        {airports.map((airport) => (
-          <option key={airport.iata} value={airport.iata}>
-            {airportLabel(airport)}
-          </option>
-        ))}
-      </datalist>
     </form>
   );
 }

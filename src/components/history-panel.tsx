@@ -20,10 +20,11 @@ function toView(row: PriceObservation): ObservationView {
     origin: row.origin,
     destination: row.destination,
     departDate: row.departDate.toISOString().slice(0, 10),
-    returnDate: row.returnDate.toISOString().slice(0, 10),
+    returnDate: row.returnDate ? row.returnDate.toISOString().slice(0, 10) : null,
     cabin: row.cabin,
     adults: row.adults,
     childAges: row.childAges,
+    hasChildren: row.hasChildren,
     currency: row.currency,
     market: row.market,
     priceKind: row.priceKind,
@@ -70,7 +71,7 @@ export function HistoryPanel({
             <PriceChart points={lowestByCollectionDay(group.observations)} currency={sample.currency} />
             <DateMatrix observations={group.observations} currency={sample.currency} />
             <p className="muted">
-              {sample.origin} → {sample.destination} · {passengerLabel(sample.adults, sample.childAges.length)} · bagagem {formatBaggage(sample)} ·{" "}
+              {sample.origin} → {sample.destination} · {passengerLabel(sample.adults, sample.childAges.length > 0 ? sample.childAges.length : Boolean(sample.hasChildren))} · bagagem {formatBaggage(sample)} ·{" "}
               {sample.currency} · {priceKindLabel(sample.priceKind)}
             </p>
             <p className="muted">
@@ -96,7 +97,7 @@ export function HistoryPanel({
                       <tr key={`${observation.sourceCollectedAt}-${observation.departDate}-${observation.totalAmountMinor}-${index}`}>
                         <td>{formatConsultation(new Date(observation.sourceCollectedAt))}</td>
                         <td>{formatCivilDate(observation.departDate)}</td>
-                        <td>{formatCivilDate(observation.returnDate)}</td>
+                        <td>{observation.returnDate ? formatCivilDate(observation.returnDate) : "Somente ida"}</td>
                         <td>{formatMoney(observation.totalAmountMinor, observation.currency)}</td>
                         <td>{priceKindLabel(observation.priceKind)}</td>
                       </tr>
@@ -152,6 +153,36 @@ function PriceChart({ points, currency }: { points: PricePoint[]; currency: stri
 function DateMatrix({ observations, currency }: { observations: ObservationView[]; currency: string }) {
   const matrix = dateMatrix(observations);
   if (matrix.departures.length === 0) return null;
+  const oneWay = matrix.returns.every((returnDate) => returnDate === "");
+  if (oneWay) {
+    return (
+      <div className="stack">
+        <h3>Somente ida</h3>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Ida</th>
+                <th>Preço</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matrix.departures.map((departDate, rowIndex) => {
+                const amount = matrix.amounts[rowIndex]?.[0] ?? null;
+                return (
+                  <tr key={departDate}>
+                    <th>{formatCivilDate(departDate)}</th>
+                    <td className={amount === null ? "gap" : undefined}>{amount === null ? "lacuna" : formatMoney(amount, currency)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="muted">Cada célula é o menor preço comparável daquela ida. Lacuna não é zero.</p>
+      </div>
+    );
+  }
   return (
     <div className="stack">
       <h3>Ida e volta</h3>
@@ -161,7 +192,7 @@ function DateMatrix({ observations, currency }: { observations: ObservationView[
             <tr>
               <th>Ida \ volta</th>
               {matrix.returns.map((returnDate) => (
-                <th key={returnDate}>{formatCivilDate(returnDate)}</th>
+                <th key={returnDate || "somente-ida"}>{returnDate ? formatCivilDate(returnDate) : "Somente ida"}</th>
               ))}
             </tr>
           </thead>

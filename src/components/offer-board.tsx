@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { AIRPORTS } from "../lib/airports";
 import { buildRouteMapModel } from "../lib/route-map";
-import type { AirportRecord } from "../lib/airports";
 import type { PriceKind } from "../domain/provider";
 import type { AirportCost } from "../domain/trip-cost";
 import { describeTripLink } from "../domain/trip-link";
@@ -20,7 +20,7 @@ export type OfferCard = {
   baggage: string;
   passengerText: string;
   departDate: string;
-  returnDate: string;
+  returnDate: string | null;
   origin: string;
   destination: string;
   routeText: string;
@@ -59,12 +59,10 @@ function TripLink({ link, priceKind }: { link: string | null; priceKind: string 
 
 export function OfferBoard({
   cards,
-  airports,
   route,
   costSeed,
 }: {
   cards: OfferCard[];
-  airports: AirportRecord[];
   route?: { origins: string[]; destinations: string[] };
   costSeed?: {
     requiredBags: number | null;
@@ -85,18 +83,15 @@ export function OfferBoard({
   const selected = cards.find((card) => card.id === selectedId) ?? cards.find((card) => card.id === defaultId) ?? null;
 
   const model = useMemo(() => {
-    const extraOrigins = cards.map((card) => card.origin);
-    const extraDestinations = cards.map((card) => card.destination);
-    const origins = route?.origins ?? (selected ? [selected.origin, ...extraOrigins] : extraOrigins);
-    const destinations = route?.destinations ?? (selected ? [selected.destination, ...extraDestinations] : extraDestinations);
+    const origins = route?.origins ?? (selected ? [selected.origin] : []);
+    const destinations = route?.destinations ?? (selected ? [selected.destination] : []);
     return buildRouteMapModel({
-      airports,
+      airports: AIRPORTS,
       origins,
       destinations,
       segments: selected?.segments ?? [],
-      showNearby: false,
     });
-  }, [airports, cards, route, selected]);
+  }, [cards, route, selected]);
 
   return (
     <div className="stack">
@@ -151,7 +146,7 @@ export function OfferBoard({
                       <span className={card.demonstration ? "badge badge-demo" : "badge"}>{card.kindLabel}</span>
                     </div>
                     <p>
-                      Preço para {card.passengerText}. Ida {card.departDate}, volta {card.returnDate}.
+                      Preço para {card.passengerText}. {card.returnDate ? `Ida ${card.departDate}, volta ${card.returnDate}.` : `Somente ida em ${card.departDate}.`}
                     </p>
                     <p>{card.routeText}</p>
                     <p>Bagagem: {card.baggage}</p>

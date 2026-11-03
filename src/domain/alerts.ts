@@ -28,7 +28,7 @@ export type AlertObservation = StoredBaggage & {
   origin: string;
   destination: string;
   departDate: string;
-  returnDate: string;
+  returnDate: string | null;
   sourceCollectedAt: Date;
   filtersVersion: number;
 };
@@ -156,7 +156,9 @@ function kindLabel(priceKind: PriceKind): string {
 function offerSentence(observation: AlertObservation): string {
   return [
     `${kindLabel(observation.priceKind)}: ${formatMoney(observation.totalAmountMinor, observation.currency)} para ${partyLabel(observation.adults)}.`,
-    `${observation.origin} → ${observation.destination}, ida ${formatCivilDate(observation.departDate)}, volta ${formatCivilDate(observation.returnDate)}.`,
+    observation.returnDate
+      ? `${observation.origin} → ${observation.destination}, ida ${formatCivilDate(observation.departDate)}, volta ${formatCivilDate(observation.returnDate)}.`
+      : `${observation.origin} → ${observation.destination}, somente ida em ${formatCivilDate(observation.departDate)}.`,
     `Bagagem: ${formatBaggage(observation)}.`,
     `${formatConsultation(observation.sourceCollectedAt)}.`,
     observation.priceKind === "DEMONSTRATION" ? "Não é uma tarifa ao vivo." : "A oferta pode expirar antes da próxima consulta.",

@@ -5,11 +5,12 @@ import { usePathname } from "next/navigation";
 import { logoutAction } from "../app/actions";
 
 const links = [
-  { href: "/busca", label: "Busca" },
-  { href: "/monitoramentos", label: "Monitoramentos" },
-  { href: "/alertas", label: "Alertas" },
-  { href: "/consumo", label: "Consumo" },
-  { href: "/configuracoes", label: "Configurações" },
+  { href: "/", label: "Início", exact: true },
+  { href: "/busca", label: "Busca", exact: false },
+  { href: "/monitoramentos", label: "Monitoramentos", exact: false },
+  { href: "/alertas", label: "Alertas", exact: false },
+  { href: "/consumo", label: "Consumo", exact: false },
+  { href: "/configuracoes", label: "Configurações", exact: false },
 ];
 
 export function Header({ userName, unread }: { userName: string | null; unread: number }) {
@@ -17,14 +18,14 @@ export function Header({ userName, unread }: { userName: string | null; unread: 
   return (
     <header className="site-header">
       <div className="header-inner">
-        <Link href={userName ? "/monitoramentos" : "/"} className="brand">
+        <Link href="/" className="brand">
           <span className="brand-mark">AF</span>
           <span>Abud Flights</span>
         </Link>
         {userName ? (
           <nav className="nav">
             {links.map((link) => (
-              <Link key={link.href} href={link.href} aria-current={pathname.startsWith(link.href) ? "page" : undefined}>
+              <Link key={link.href} href={link.href} aria-current={(link.exact ? pathname === link.href : pathname.startsWith(link.href)) ? "page" : undefined}>
                 {link.label}
                 {link.href === "/alertas" && unread > 0 ? <span className="count">{unread}</span> : null}
               </Link>

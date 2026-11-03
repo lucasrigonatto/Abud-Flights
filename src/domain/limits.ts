@@ -1,7 +1,9 @@
 export const LIMITS = {
   maxActiveMonitorsPerUser: 5,
-  maxAirportsPerSide: 3,
-  allowedFlexDays: [0, 1, 3] as const,
+  maxAirportsPerSide: 6,
+  maxAlternatesPerSide: 5,
+  allowedFlexDays: [0, 1, 3, 5] as const,
+  noDurationLimitMinutes: 72 * 60,
   maxCombinationsPerRound: 8,
   maxMonitorDays: 180,
   maxAdults: 6,

@@ -9,7 +9,8 @@ export type ObservationView = StoredBaggage & {
   origin: string;
   destination: string;
   departDate: string;
-  returnDate: string;
+  returnDate: string | null;
+  hasChildren?: boolean;
   cabin: Cabin;
   adults: number;
   childAges: number[];
@@ -58,10 +59,10 @@ export function comparabilityKey(
     | "baggageKnown"
     | "baggageIncluded"
     | "checkedBags"
-  >,
+  > & { hasChildren?: boolean },
 ): string {
   const ages = [...observation.childAges].sort((left, right) => left - right).join(".");
-  return [
+  const key = [
     observation.origin,
     observation.destination,
     observation.cabin,
@@ -72,6 +73,7 @@ export function comparabilityKey(
     observation.priceKind,
     baggageSignature(observation),
   ].join("|");
+  return observation.hasChildren ? `${key}|com-criancas` : key;
 }
 
 export function comparableHistory(
@@ -180,7 +182,7 @@ export function dateMatrix(observations: ObservationView[]): {
   amounts: Array<Array<number | null>>;
 } {
   const departures = [...new Set(observations.map((observation) => observation.departDate))].sort();
-  const returns = [...new Set(observations.map((observation) => observation.returnDate))].sort();
+  const returns = [...new Set(observations.map((observation) => observation.returnDate ?? ""))].sort();
   const best = new Map<string, number>();
   for (const observation of observations) {
     const key = `${observation.departDate}|${observation.returnDate}`;

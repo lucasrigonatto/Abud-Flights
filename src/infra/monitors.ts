@@ -40,11 +40,13 @@ function revisionData(monitorId: string, filtersVersion: number, criteria: Monit
     origins: criteria.origins,
     destinations: criteria.destinations,
     dateMode: criteria.dateMode,
+    tripType: criteria.tripType ?? "ROUND_TRIP",
     departDate: new Date(`${criteria.departDate}T00:00:00.000Z`),
-    returnDate: new Date(`${criteria.returnDate}T00:00:00.000Z`),
+    returnDate: criteria.returnDate ? new Date(`${criteria.returnDate}T00:00:00.000Z`) : null,
     flexDays: criteria.flexDays,
     adults: criteria.adults,
     childAges: criteria.childAges,
+    hasChildren: criteria.hasChildren === true,
     cabin: criteria.cabin,
     checkedBags: criteria.checkedBags,
     currency: criteria.currency,
@@ -69,11 +71,13 @@ export async function createMonitor(userId: string, draft: MonitorDraft): Promis
         origins: draft.criteria.origins,
         destinations: draft.criteria.destinations,
         dateMode: draft.criteria.dateMode,
+        tripType: draft.criteria.tripType ?? "ROUND_TRIP",
         departDate: new Date(`${draft.criteria.departDate}T00:00:00.000Z`),
-        returnDate: new Date(`${draft.criteria.returnDate}T00:00:00.000Z`),
+        returnDate: draft.criteria.returnDate ? new Date(`${draft.criteria.returnDate}T00:00:00.000Z`) : null,
         flexDays: draft.criteria.flexDays,
         adults: draft.criteria.adults,
         childAges: draft.criteria.childAges,
+        hasChildren: draft.criteria.hasChildren === true,
         cabin: draft.criteria.cabin,
         checkedBags: draft.criteria.checkedBags,
         maxStops: draft.criteria.maxStops,
@@ -203,9 +207,11 @@ function sameCriteria(monitor: Monitor, criteria: MonitorCriteria): boolean {
     monitor.dateMode === criteria.dateMode &&
     isoFromUtcDate(monitor.departDate) === criteria.departDate &&
     isoFromUtcDate(monitor.returnDate) === criteria.returnDate &&
+    monitor.tripType === (criteria.tripType ?? "ROUND_TRIP") &&
     monitor.flexDays === criteria.flexDays &&
     monitor.adults === criteria.adults &&
     monitor.childAges.join(",") === criteria.childAges.join(",") &&
+    monitor.hasChildren === (criteria.hasChildren === true) &&
     monitor.cabin === criteria.cabin &&
     monitor.checkedBags === criteria.checkedBags &&
     monitor.currency === criteria.currency &&
@@ -246,11 +252,13 @@ export async function updateMonitor(userId: string, monitorId: string, draft: Mo
         origins: draft.criteria.origins,
         destinations: draft.criteria.destinations,
         dateMode: draft.criteria.dateMode,
+        tripType: draft.criteria.tripType ?? "ROUND_TRIP",
         departDate: new Date(`${draft.criteria.departDate}T00:00:00.000Z`),
-        returnDate: new Date(`${draft.criteria.returnDate}T00:00:00.000Z`),
+        returnDate: draft.criteria.returnDate ? new Date(`${draft.criteria.returnDate}T00:00:00.000Z`) : null,
         flexDays: draft.criteria.flexDays,
         adults: draft.criteria.adults,
         childAges: draft.criteria.childAges,
+        hasChildren: draft.criteria.hasChildren === true,
         cabin: draft.criteria.cabin,
         checkedBags: draft.criteria.checkedBags,
         maxStops: draft.criteria.maxStops,

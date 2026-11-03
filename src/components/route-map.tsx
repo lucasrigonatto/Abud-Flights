@@ -64,7 +64,7 @@ export function RouteMap({ model, onPick }: { model: RouteMapModel; onPick?: (ma
         zoomControl: true,
         attributionControl: true,
         scrollWheelZoom: false,
-      }).setView([-14, -40], 3);
+      }).setView([20, 0], 2);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 18,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -133,8 +133,9 @@ export function RouteMap({ model, onPick }: { model: RouteMapModel; onPick?: (ma
 
     const fit = () => {
       map.invalidateSize();
-      if (points.length === 1) map.setView(points[0], 6);
-      else if (points.length > 1) map.fitBounds(L.latLngBounds(points), { padding: [52, 72], maxZoom: 6 });
+      if (points.length === 0) map.setView([20, 0], 2);
+      else if (points.length === 1) map.setView(points[0], 6);
+      else map.fitBounds(L.latLngBounds(points), { padding: [52, 72], maxZoom: 6 });
     };
     fit();
     const timer = window.setTimeout(fit, 200);
@@ -154,15 +155,14 @@ export function RouteMap({ model, onPick }: { model: RouteMapModel; onPick?: (ma
 
   return (
     <div className="map-shell">
-      {model.summary ? <p className="map-summary">{model.summary}</p> : <p className="map-summary">Rota ainda sem origem e destino</p>}
+      {model.summary ? <p className="map-summary">{model.summary}</p> : <p className="map-summary">Nenhum aeroporto escolhido</p>}
       {model.connections.length > 0 ? <p className="muted">Conexão: {model.connections.join(", ")}</p> : null}
       <div ref={frameRef} className="map-canvas" role="application" aria-label="Mapa da rota selecionada" />
       <ul className="map-legend">
-        <li><span className="pin pin-origin">GYN</span> Origem</li>
-        <li><span className="pin pin-destination">LIS</span> Destino</li>
-        <li><span className="pin pin-alternate">ALT</span> Alternativa</li>
-        <li><span className="pin pin-connection">HUB</span> Conexão</li>
-        <li><span className="pin pin-nearby">OPC</span> Opção próxima</li>
+        <li><span className="pin pin-origin">IDA</span> Origem escolhida</li>
+        <li><span className="pin pin-destination">VOL</span> Destino escolhido</li>
+        <li><span className="pin pin-alternate">ALT</span> Alternativa escolhida</li>
+        <li><span className="pin pin-connection">ESC</span> Conexão da oferta</li>
       </ul>
       {choosable.length > 0 ? (
         <ul className="airport-picks">

@@ -48,10 +48,11 @@ export function formatDuration(minutes: number): string {
   return `${hours} h ${rest} min`;
 }
 
-export function passengerLabel(adults: number, childCount: number): string {
+export function passengerLabel(adults: number, children: number | boolean): string {
   const adultText = adults === 1 ? "1 adulto" : `${adults} adultos`;
-  if (childCount <= 0) return adultText;
-  const childText = childCount === 1 ? "1 criança" : `${childCount} crianças`;
+  if (children === true) return `${adultText} · com crianças`;
+  if (typeof children !== "number" || children <= 0) return adultText;
+  const childText = children === 1 ? "1 criança" : `${children} crianças`;
   return `${adultText} e ${childText}`;
 }
 

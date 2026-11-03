@@ -3,7 +3,6 @@ import { formatBaggage } from "../domain/baggage";
 import { formatCivilDate, formatConsultation } from "../domain/dates";
 import { formatDuration, offerFreshness, passengerLabel, priceKindLabel, stopsLabel } from "../domain/labels";
 import { formatMoney } from "../domain/money";
-import type { AirportRecord } from "../lib/airports";
 import type { AirportCost } from "../domain/trip-cost";
 import { OfferBoard, type OfferCard } from "./offer-board";
 
@@ -29,9 +28,9 @@ function toCard(row: Row, now: Date): OfferCard {
     totalAmountMinor: row.totalAmountMinor,
     adults: row.adults,
     baggage: formatBaggage(row),
-    passengerText: passengerLabel(row.adults, row.childAges.length),
+    passengerText: passengerLabel(row.adults, row.childAges.length > 0 ? row.childAges.length : row.hasChildren),
     departDate: formatCivilDate(row.departDate.toISOString().slice(0, 10)),
-    returnDate: formatCivilDate(row.returnDate.toISOString().slice(0, 10)),
+    returnDate: row.returnDate ? formatCivilDate(row.returnDate.toISOString().slice(0, 10)) : null,
     origin: row.origin,
     destination: row.destination,
     routeText: `${row.origin} → ${row.destination} · ${stopsLabel(row.stops)} · ${formatDuration(row.itinerary.durationMinutes)}`,
@@ -52,13 +51,11 @@ function toCard(row: Row, now: Date): OfferCard {
 export function OfferList({
   rows,
   now,
-  airports,
   route,
   costSeed,
 }: {
   rows: Row[];
   now: Date;
-  airports: AirportRecord[];
   route?: { origins: string[]; destinations: string[] };
   costSeed?: {
     requiredBags: number | null;
@@ -69,5 +66,5 @@ export function OfferList({
   };
 }) {
   if (rows.length === 0 && !route) return null;
-  return <OfferBoard cards={rows.map((row) => toCard(row, now))} airports={airports} route={route} costSeed={costSeed} />;
+  return <OfferBoard cards={rows.map((row) => toCard(row, now))} route={route} costSeed={costSeed} />;
 }

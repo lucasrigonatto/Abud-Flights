@@ -37,7 +37,7 @@ function addMinutes(local: string, minutes: number): string {
 }
 
 function perPersonMinor(query: ProviderQuery): number {
-  const seed = fnv1a([query.origin, query.destination, query.departDate, query.returnDate, query.cabin, query.currency].join("|"));
+  const seed = fnv1a([query.origin, query.destination, query.departDate, query.returnDate ?? "", query.cabin, query.currency].join("|"));
   return 180_000 + (seed % 220_000);
 }
 
@@ -90,11 +90,14 @@ function connectingOffer(query: ProviderQuery, perPerson: number, now: Date): Pr
   const outboundStart = localDateTime(query.departDate, 7 * 60);
   const first = chainedSegment(query.origin, hub, outboundStart, 180, 4);
   const second = chainedSegment(hub, query.destination, addMinutes(first.arriveLocal, 80), 520, 5);
-  const returnStart = localDateTime(query.returnDate, 9 * 60);
-  const third = chainedSegment(query.destination, hub, returnStart, 500, 6);
-  const fourth = chainedSegment(hub, query.origin, addMinutes(third.arriveLocal, 80), 190, 7);
+  const segments = [first, second];
+  if (query.returnDate) {
+    const returnStart = localDateTime(query.returnDate, 9 * 60);
+    const third = chainedSegment(query.destination, hub, returnStart, 500, 6);
+    segments.push(third, chainedSegment(hub, query.origin, addMinutes(third.arriveLocal, 80), 190, 7));
+  }
   return {
-    providerOfferId: `sim-2-${query.origin}-${query.destination}-${query.departDate}-${query.returnDate}-${query.adults}-${query.currency}`,
+    providerOfferId: `sim-2-${query.origin}-${query.destination}-${query.departDate}-${query.returnDate ?? "ow"}-${query.adults}-${query.currency}`,
     priceKind: "DEMONSTRATION",
     totalAmountMinor: partyTotal(perPerson + 40_000, query),
     currency: query.currency,
@@ -106,8 +109,8 @@ function connectingOffer(query: ProviderQuery, perPerson: number, now: Date): Pr
     expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
     link: `/ofertas-simuladas/sim-2-${query.origin}-${query.destination}`,
     stops: 1,
-    durationMinutes: 780,
-    segments: [first, second, third, fourth],
+    durationMinutes: query.returnDate ? 780 : 260,
+    segments,
   };
 }
 
@@ -116,7 +119,7 @@ function buildOffers(query: ProviderQuery, now: Date): ProviderOffer[] {
   const knownBags = query.checkedBags ?? 0;
   const offers: ProviderOffer[] = [
     {
-      providerOfferId: `sim-0-${query.origin}-${query.destination}-${query.departDate}-${query.returnDate}-${query.adults}-${query.currency}`,
+      providerOfferId: `sim-0-${query.origin}-${query.destination}-${query.departDate}-${query.returnDate ?? "ow"}-${query.adults}-${query.currency}`,
       priceKind: "DEMONSTRATION",
       totalAmountMinor: partyTotal(perPerson, query),
       currency: query.currency,
@@ -135,11 +138,13 @@ function buildOffers(query: ProviderQuery, now: Date): ProviderOffer[] {
       durationMinutes: 540,
       segments: [
         segment(query, 0, query.departDate, 540),
-        segment({ ...query, origin: query.destination, destination: query.origin }, 1, query.returnDate, 560),
+        ...(query.returnDate
+          ? [segment({ ...query, origin: query.destination, destination: query.origin }, 1, query.returnDate, 560)]
+          : []),
       ],
     },
     {
-      providerOfferId: `sim-1-${query.origin}-${query.destination}-${query.departDate}-${query.returnDate}-${query.adults}-${query.currency}`,
+      providerOfferId: `sim-1-${query.origin}-${query.destination}-${query.departDate}-${query.returnDate ?? "ow"}-${query.adults}-${query.currency}`,
       priceKind: "DEMONSTRATION",
       totalAmountMinor: partyTotal(perPerson + 15_000, query),
       currency: query.currency,
@@ -154,13 +159,17 @@ function buildOffers(query: ProviderQuery, now: Date): ProviderOffer[] {
       durationMinutes: 720,
       segments: [
         segment(query, 2, query.departDate, 720),
-        segment({ ...query, origin: query.destination, destination: query.origin }, 3, query.returnDate, 700),
+        ...(query.returnDate
+          ? [segment({ ...query, origin: query.destination, destination: query.origin }, 3, query.returnDate, 700)]
+          : []),
       ],
     },
   ];
   const connection = connectingOffer(query, perPerson, now);
   if (connection) offers.push(connection);
-  return offers.filter((offer) => offer.stops <= query.maxStops && offer.durationMinutes <= query.maxDurationMinutes);
+  return offers.filter(
+    (offer) => (query.maxStops === null || offer.stops <= query.maxStops) && offer.durationMinutes <= query.maxDurationMinutes,
+  );
 }
 
 export function createSimulator(options?: { mode?: SimulatorMode; now?: () => Date }): FlightProvider {

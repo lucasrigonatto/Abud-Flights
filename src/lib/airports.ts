@@ -1,3 +1,5 @@
+import generatedAirports from "../data/airports.json";
+
 export type AirportRecord = {
   iata: string;
   name: string;
@@ -8,7 +10,7 @@ export type AirportRecord = {
   timezone: string;
 };
 
-export const AIRPORTS: AirportRecord[] = [
+export const CURATED_AIRPORTS: AirportRecord[] = [
   { iata: "GYN", name: "Santa Genoveva", city: "Goiânia", country: "Brasil", latitude: -16.632, longitude: -49.2206, timezone: "America/Sao_Paulo" },
   { iata: "BSB", name: "Presidente Juscelino Kubitschek", city: "Brasília", country: "Brasil", latitude: -15.8697, longitude: -47.9172, timezone: "America/Sao_Paulo" },
   { iata: "GRU", name: "Guarulhos", city: "São Paulo", country: "Brasil", latitude: -23.4356, longitude: -46.4731, timezone: "America/Sao_Paulo" },
@@ -50,6 +52,48 @@ export const AIRPORTS: AirportRecord[] = [
   { iata: "JFK", name: "John F. Kennedy", city: "Nova York", country: "Estados Unidos", latitude: 40.6413, longitude: -73.7781, timezone: "America/New_York" },
 ];
 
-export function airportLabel(airport: Pick<AirportRecord, "iata" | "city" | "name">): string {
-  return `${airport.iata} — ${airport.city}, ${airport.name}`;
+const merged = new Map<string, AirportRecord>();
+for (const airport of generatedAirports as AirportRecord[]) merged.set(airport.iata, airport);
+for (const airport of CURATED_AIRPORTS) merged.set(airport.iata, airport);
+
+/** Aeroportos comerciais com código IATA. Coordenadas de OurAirports (domínio público); a lista curada preserva os nomes do produto. */
+export const AIRPORTS: AirportRecord[] = [...merged.values()].sort((left, right) => left.iata.localeCompare(right.iata));
+
+const byIata = new Map(AIRPORTS.map((airport) => [airport.iata, airport]));
+
+export function airportByCode(code: string): AirportRecord | null {
+  return byIata.get(code.trim().toUpperCase()) ?? null;
+}
+
+export function airportLabel(airport: Pick<AirportRecord, "iata" | "city" | "country">): string {
+  return `${airport.city} (${airport.iata}) · ${airport.country}`;
+}
+
+function fold(value: string): string {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+}
+
+export function searchAirports(query: string, limit = 8, source: AirportRecord[] = AIRPORTS): AirportRecord[] {
+  const term = fold(query.trim());
+  if (!term) return [];
+  const scored: Array<{ airport: AirportRecord; score: number }> = [];
+  for (const airport of source) {
+    const iata = airport.iata.toLowerCase();
+    const city = fold(airport.city);
+    const name = fold(airport.name);
+    const country = fold(airport.country);
+    let score = 0;
+    if (iata === term) score = 100;
+    else if (iata.startsWith(term)) score = 80;
+    else if (city.startsWith(term)) score = 60;
+    else if (city.split(" ").some((word) => word.startsWith(term))) score = 50;
+    else if (name.includes(term) || country.startsWith(term)) score = 20;
+    else continue;
+    scored.push({ airport, score });
+  }
+  scored.sort(
+    (left, right) =>
+      right.score - left.score || left.airport.city.localeCompare(right.airport.city, "pt") || left.airport.iata.localeCompare(right.airport.iata),
+  );
+  return scored.slice(0, limit).map((item) => item.airport);
 }

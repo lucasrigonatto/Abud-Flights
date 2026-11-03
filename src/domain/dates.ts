@@ -74,6 +74,9 @@ export function utcDate(isoDate: string): Date {
   return new Date(`${isoDate}T00:00:00.000Z`);
 }
 
-export function isoFromUtcDate(date: Date): string {
+export function isoFromUtcDate(date: Date): string;
+export function isoFromUtcDate(date: Date | null): string | null;
+export function isoFromUtcDate(date: Date | null): string | null {
+  if (!date) return null;
   return date.toISOString().slice(0, 10);
 }
