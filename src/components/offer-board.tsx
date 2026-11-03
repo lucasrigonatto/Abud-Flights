@@ -52,7 +52,12 @@ function TripLink({ card }: { card: OfferCard }) {
   if (trip.kind === "source") {
     return (
       <p>
-        <a className="btn" href={trip.href} target="_blank" rel="noopener noreferrer">
+        <a
+          className="btn"
+          href={trip.href}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           {trip.label}
         </a>
         <span className="muted"> {trip.note}</span>
@@ -69,7 +74,8 @@ function TripLink({ card }: { card: OfferCard }) {
     segments: card.segments,
   });
   if (!search) {
-    if (trip.kind === "unavailable") return <p className="muted">{trip.note}</p>;
+    if (trip.kind === "unavailable")
+      return <p className="muted">{trip.note}</p>;
     return (
       <p>
         <a href={trip.href}>{trip.label}</a>
@@ -79,10 +85,21 @@ function TripLink({ card }: { card: OfferCard }) {
   }
   return (
     <p>
-      <a className="btn" href={search} target="_blank" rel="noopener noreferrer">
+      <a
+        className="btn"
+        href={search}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         Abrir esta passagem
       </a>
-      <span className="muted"> Abre o Google Voos já com os trechos desta oferta. O preço ao vivo aparece lá. O valor nesta tela continua de demonstração.</span>
+      <span className="muted">
+        {" "}
+        Abre o Google Voos já com os trechos desta oferta.{" "}
+        {card.demonstration
+          ? "O preço ao vivo aparece lá. O valor nesta tela continua de demonstração."
+          : "Confira o preço e a disponibilidade no site de destino antes de comprar."}
+      </span>
     </p>
   );
 }
@@ -102,19 +119,30 @@ export function OfferBoard({
     primaryDestination?: string;
   };
 }) {
-  const currencies = useMemo(() => [...new Set(cards.map((card) => card.currency))], [cards]);
+  const currencies = useMemo(
+    () => [...new Set(cards.map((card) => card.currency))],
+    [cards],
+  );
   const defaultId = useMemo(() => {
     const currency = currencies[0];
-    return cards
-      .filter((card) => card.currency === currency)
-      .sort((left, right) => left.totalAmountMinor - right.totalAmountMinor)[0]?.id ?? "";
+    return (
+      cards
+        .filter((card) => card.currency === currency)
+        .sort(
+          (left, right) => left.totalAmountMinor - right.totalAmountMinor,
+        )[0]?.id ?? ""
+    );
   }, [cards, currencies]);
   const [selectedId, setSelectedId] = useState(defaultId);
-  const selected = cards.find((card) => card.id === selectedId) ?? cards.find((card) => card.id === defaultId) ?? null;
+  const selected =
+    cards.find((card) => card.id === selectedId) ??
+    cards.find((card) => card.id === defaultId) ??
+    null;
 
   const model = useMemo(() => {
     const origins = route?.origins ?? (selected ? [selected.origin] : []);
-    const destinations = route?.destinations ?? (selected ? [selected.destination] : []);
+    const destinations =
+      route?.destinations ?? (selected ? [selected.destination] : []);
     return buildRouteMapModel({
       airports: AIRPORTS,
       origins,
@@ -149,16 +177,29 @@ export function OfferBoard({
             priceKind: card.priceKind,
           }),
         )}
-        seed={costSeed ?? { requiredBags: null, extraBagAmountMinor: null, costs: [], primaryOrigin: route?.origins[0], primaryDestination: route?.destinations[0] }}
+        seed={
+          costSeed ?? {
+            requiredBags: null,
+            extraBagAmountMinor: null,
+            costs: [],
+            primaryOrigin: route?.origins[0],
+            primaryDestination: route?.destinations[0],
+          }
+        }
       />
       {currencies.map((currency) => (
         <section key={currency} className="stack">
           <h2>Ofertas em {currency}</h2>
-          <p className="muted">O valor e a moeda gravados são os originais da oferta. Moedas diferentes não são somadas.</p>
+          <p className="muted">
+            O valor e a moeda gravados são os originais da oferta. Moedas
+            diferentes não são somadas.
+          </p>
           <div className="offer-list">
             {cards
               .filter((card) => card.currency === currency)
-              .sort((left, right) => left.totalAmountMinor - right.totalAmountMinor)
+              .sort(
+                (left, right) => left.totalAmountMinor - right.totalAmountMinor,
+              )
               .map((card) => {
                 const active = card.id === selected?.id;
                 return (
@@ -173,31 +214,61 @@ export function OfferBoard({
                   >
                     <div className="offer-top">
                       <p className="price">{card.priceLabel}</p>
-                      <span className={card.demonstration ? "badge badge-demo" : "badge"}>{card.kindLabel}</span>
+                      <span
+                        className={
+                          card.demonstration ? "badge badge-demo" : "badge"
+                        }
+                      >
+                        {card.kindLabel}
+                      </span>
                     </div>
                     <p>
-                      Preço para {card.passengerText}. {card.returnDate ? `Ida ${card.departDate}, volta ${card.returnDate}.` : `Somente ida em ${card.departDate}.`}
+                      Preço para {card.passengerText}.{" "}
+                      {card.returnDate
+                        ? `Ida ${card.departDate}, volta ${card.returnDate}.`
+                        : `Somente ida em ${card.departDate}.`}
                     </p>
                     <p>{card.routeText}</p>
                     <p>Bagagem: {card.baggage}</p>
                     <p>
-                      <time dateTime={card.consultationIso}>{card.consultation}</time>
-                      {card.fromCache ? " · reutilizado do cache, com a data da consulta original" : ""}
+                      <time dateTime={card.consultationIso}>
+                        {card.consultation}
+                      </time>
+                      {card.fromCache
+                        ? " · reutilizado do cache, com a data da consulta original"
+                        : ""}
                     </p>
-                    {card.demonstration ? <p className="muted">Não é uma tarifa ao vivo.</p> : null}
+                    {card.demonstration ? (
+                      <p className="muted">Não é uma tarifa ao vivo.</p>
+                    ) : null}
                     {card.expired ? (
-                      <p className="notice notice-warn">Oferta expirada. O valor continua no histórico, mas não é uma oferta vigente.</p>
+                      <p className="notice notice-warn">
+                        Oferta expirada. O valor continua no histórico, mas não
+                        é uma oferta vigente.
+                      </p>
                     ) : null}
                     <ol className="segments">
                       {card.segments.map((segment) => (
-                        <li key={`${segment.flightNumber}-${segment.departLocal}`}>
-                          {segment.airlineName} {segment.flightNumber}: {segment.origin} {segment.departLocal.replace("T", " ")} → {segment.destination}{" "}
+                        <li
+                          key={`${segment.flightNumber}-${segment.departLocal}`}
+                        >
+                          {segment.airlineName} {segment.flightNumber}:{" "}
+                          {segment.origin}{" "}
+                          {segment.departLocal.replace("T", " ")} →{" "}
+                          {segment.destination}{" "}
                           {segment.arriveLocal.replace("T", " ")}
                         </li>
                       ))}
                     </ol>
-                    <button type="button" className={active ? "btn" : "btn btn-secondary"} aria-pressed={active} onClick={() => setSelectedId(card.id)}>
-                      {active ? "Rota em destaque no mapa" : "Ver esta rota no mapa"}
+                    <button
+                      type="button"
+                      className={active ? "btn" : "btn btn-secondary"}
+                      aria-pressed={active}
+                      onClick={() => setSelectedId(card.id)}
+                    >
+                      {active
+                        ? "Rota em destaque no mapa"
+                        : "Ver esta rota no mapa"}
                     </button>
                     <TripLink card={card} />
                   </article>

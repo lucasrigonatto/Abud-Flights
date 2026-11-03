@@ -1,10 +1,26 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cancelMonitorAction, pauseMonitorAction, resumeMonitorAction, updateMonitorAction } from "../../actions";
+import {
+  cancelMonitorAction,
+  pauseMonitorAction,
+  resumeMonitorAction,
+  updateMonitorAction,
+} from "../../actions";
 import { coverageMessage } from "../../../domain/coverage";
-import { inclusiveUntilDate, isoFromUtcDate, isoDateInTimeZone, formatDateTime, formatCivilDate } from "../../../domain/dates";
+import {
+  inclusiveUntilDate,
+  isoFromUtcDate,
+  isoDateInTimeZone,
+  formatDateTime,
+  formatCivilDate,
+} from "../../../domain/dates";
 import { buildCombinations } from "../../../domain/combinations";
-import { budgetScopeLabel, cabinLabel, monitorStatusLabel, runStatusLabel } from "../../../domain/labels";
+import {
+  budgetScopeLabel,
+  cabinLabel,
+  monitorStatusLabel,
+  runStatusLabel,
+} from "../../../domain/labels";
 import { formatMoney, minorToInput } from "../../../domain/money";
 import { LIMITS } from "../../../domain/limits";
 import { HistoryPanel } from "../../../components/history-panel";
@@ -14,6 +30,7 @@ import { TripForm, type TripDefaults } from "../../../components/trip-form";
 import { criteriaFromMonitor } from "../../../infra/run-monitor";
 import { requireUser } from "../../../lib/auth";
 import { prisma } from "../../../infra/prisma";
+import { providerSettings } from "../../../providers/settings";
 
 export default async function MonitorDetailPage({
   params,
@@ -23,6 +40,7 @@ export default async function MonitorDetailPage({
   searchParams: Promise<{ erro?: string }>;
 }) {
   const user = await requireUser();
+  const settings = providerSettings();
   const { id } = await params;
   const { erro } = await searchParams;
   const monitor = await prisma.monitor.findFirst({
@@ -54,27 +72,54 @@ export default async function MonitorDetailPage({
         destination: monitor.destinations[0],
         currency: monitor.currency,
         cabin: monitor.cabin,
-        priceKind: "DEMONSTRATION",
+        priceKind: settings.live ? "LIVE_CURRENT" : "DEMONSTRATION",
       },
     }),
   ]);
   const latest = monitor.runs[0];
-  const lastSuccess = monitor.runs.find((run) => run.status === "SUCCESS" || run.status === "PARTIAL" || run.status === "NO_OFFERS");
-  const latestOffers = latest ? observations.filter((observation) => observation.searchRunId === latest.id) : [];
-  const currentObservations = observations.filter((observation) => observation.filtersVersion === monitor.filtersVersion);
-  const previous = observations.filter((observation) => observation.filtersVersion !== monitor.filtersVersion);
+  const lastSuccess = monitor.runs.find(
+    (run) =>
+      run.status === "SUCCESS" ||
+      run.status === "PARTIAL" ||
+      run.status === "NO_OFFERS",
+  );
+  const latestOffers = latest
+    ? observations.filter(
+        (observation) => observation.searchRunId === latest.id,
+      )
+    : [];
+  const currentObservations = observations.filter(
+    (observation) => observation.filtersVersion === monitor.filtersVersion,
+  );
+  const previous = observations.filter(
+    (observation) => observation.filtersVersion !== monitor.filtersVersion,
+  );
   const rule = monitor.alertRules.find((item) => item.type === "TARGET_PRICE");
-  const percentRule = monitor.alertRules.find((item) => item.type === "PERCENT_DROP");
-  const savingsRule = monitor.alertRules.find((item) => item.type === "ALTERNATE_SAVINGS");
+  const percentRule = monitor.alertRules.find(
+    (item) => item.type === "PERCENT_DROP",
+  );
+  const savingsRule = monitor.alertRules.find(
+    (item) => item.type === "ALTERNATE_SAVINGS",
+  );
   const newLowRule = monitor.alertRules.find((item) => item.type === "NEW_LOW");
   const groundCosts = Object.fromEntries(
     monitor.groundCosts.map((cost) => [
       cost.airport,
       {
-        transfer: cost.transferAmountMinor === null ? "" : minorToInput(cost.transferAmountMinor, monitor.currency),
-        lodging: cost.lodgingAmountMinor === null ? "" : minorToInput(cost.lodgingAmountMinor, monitor.currency),
-        fees: cost.feesAmountMinor === null ? "" : minorToInput(cost.feesAmountMinor, monitor.currency),
-        minutes: cost.transferMinutes === null ? "" : String(cost.transferMinutes),
+        transfer:
+          cost.transferAmountMinor === null
+            ? ""
+            : minorToInput(cost.transferAmountMinor, monitor.currency),
+        lodging:
+          cost.lodgingAmountMinor === null
+            ? ""
+            : minorToInput(cost.lodgingAmountMinor, monitor.currency),
+        fees:
+          cost.feesAmountMinor === null
+            ? ""
+            : minorToInput(cost.feesAmountMinor, monitor.currency),
+        minutes:
+          cost.transferMinutes === null ? "" : String(cost.transferMinutes),
       },
     ]),
   );
@@ -82,7 +127,9 @@ export default async function MonitorDetailPage({
   const planned = buildCombinations(criteriaFromMonitor(monitor), today).length;
   const sharedSample = shared.reduce((sum, stat) => sum + stat.sampleCount, 0);
   const departLabel = formatCivilDate(isoFromUtcDate(monitor.departDate));
-  const returnLabel = monitor.returnDate ? formatCivilDate(isoFromUtcDate(monitor.returnDate)) : null;
+  const returnLabel = monitor.returnDate
+    ? formatCivilDate(isoFromUtcDate(monitor.returnDate))
+    : null;
   const defaults: TripDefaults = {
     tripType: monitor.tripType,
     origin: monitor.origins[0] ?? "",
@@ -90,7 +137,7 @@ export default async function MonitorDetailPage({
     destination: monitor.destinations[0] ?? "",
     destinationAlts: monitor.destinations.slice(1, 6),
     departDate: isoFromUtcDate(monitor.departDate),
-    returnDate: returnLabel ? isoFromUtcDate(monitor.returnDate) ?? "" : "",
+    returnDate: returnLabel ? (isoFromUtcDate(monitor.returnDate) ?? "") : "",
     flexDays: monitor.flexDays,
     adults: monitor.adults,
     hasChildren: monitor.hasChildren || monitor.childAges.length > 0,
@@ -98,21 +145,37 @@ export default async function MonitorDetailPage({
     bags: monitor.checkedBags === null ? "unset" : String(monitor.checkedBags),
     currency: monitor.currency,
     market: monitor.market,
-    maxStops: monitor.maxStops === 1 || monitor.maxStops === 2 ? monitor.maxStops : null,
+    maxStops:
+      monitor.maxStops === 1 || monitor.maxStops === 2
+        ? monitor.maxStops
+        : null,
     name: monitor.name,
     monitorUntil: inclusiveUntilDate(monitor.monitorUntil),
-    targetAmount: rule ? minorToInput(rule.targetAmountMinor, rule.currency) : "",
+    targetAmount: rule
+      ? minorToInput(rule.targetAmountMinor, rule.currency)
+      : "",
     budgetScope: rule?.scope ?? "TOTAL",
-    percentDrop: percentRule?.percentPoints ? String(percentRule.percentPoints) : "",
-    minSavings: savingsRule?.minSavingsMinor ? minorToInput(savingsRule.minSavingsMinor, savingsRule.currency) : "",
+    percentDrop: percentRule?.percentPoints
+      ? String(percentRule.percentPoints)
+      : "",
+    minSavings: savingsRule?.minSavingsMinor
+      ? minorToInput(savingsRule.minSavingsMinor, savingsRule.currency)
+      : "",
     newLow: newLowRule?.active !== false,
-    extraBagAmount: monitor.extraBagAmountMinor === null ? "" : minorToInput(monitor.extraBagAmountMinor, monitor.currency),
+    extraBagAmount:
+      monitor.extraBagAmountMinor === null
+        ? ""
+        : minorToInput(monitor.extraBagAmountMinor, monitor.currency),
     groundCosts,
     monitorId: monitor.id,
   };
-  const roundRequests = latest ? requests.filter((request) => request.searchRunId === latest.id) : [];
+  const roundRequests = latest
+    ? requests.filter((request) => request.searchRunId === latest.id)
+    : [];
   const charged = roundRequests.filter((request) => request.charged).length;
-  const failures = roundRequests.filter((request) => request.status === "error").length;
+  const failures = roundRequests.filter(
+    (request) => request.status === "error",
+  ).length;
 
   return (
     <div className="stack">
@@ -120,20 +183,40 @@ export default async function MonitorDetailPage({
         <p className="eyebrow">{monitorStatusLabel(monitor.status)}</p>
         <h1>{monitor.name}</h1>
         <p>
-          {monitor.origins.join(", ")} → {monitor.destinations.join(", ")} · {returnLabel ? `ida ${departLabel} · volta ${returnLabel}` : `somente ida ${departLabel}`} ·{" "}
-          {monitor.dateMode === "FIXED" ? "datas fixas" : `flexibilidade de ±${monitor.flexDays} dias`} ·{" "}
-          {monitor.maxStops === 1 || monitor.maxStops === 2 ? `até ${monitor.maxStops} ${monitor.maxStops === 1 ? "conexão" : "conexões"}` : "conexões sem limite"}
+          {monitor.origins.join(", ")} → {monitor.destinations.join(", ")} ·{" "}
+          {returnLabel
+            ? `ida ${departLabel} · volta ${returnLabel}`
+            : `somente ida ${departLabel}`}{" "}
+          ·{" "}
+          {monitor.dateMode === "FIXED"
+            ? "datas fixas"
+            : `flexibilidade de ±${monitor.flexDays} dias`}{" "}
+          ·{" "}
+          {monitor.maxStops === 1 || monitor.maxStops === 2
+            ? `até ${monitor.maxStops} ${monitor.maxStops === 1 ? "conexão" : "conexões"}`
+            : "conexões sem limite"}
         </p>
         <p>
           {monitor.adults} {monitor.adults === 1 ? "adulto" : "adultos"}
-          {monitor.hasChildren || monitor.childAges.length > 0 ? " · com crianças" : ""} · {cabinLabel(monitor.cabin)} · critérios versão {monitor.filtersVersion}
+          {monitor.hasChildren || monitor.childAges.length > 0
+            ? " · com crianças"
+            : ""}{" "}
+          · {cabinLabel(monitor.cabin)} · critérios versão{" "}
+          {monitor.filtersVersion}
         </p>
         {rule ? (
           <p>
-            Preço-alvo {formatMoney(rule.targetAmountMinor, rule.currency)} {budgetScopeLabel(rule.scope)}.
-            {percentRule?.percentPoints ? ` Queda de ${percentRule.percentPoints}%.` : ""}
-            {savingsRule?.minSavingsMinor ? ` Economia mínima no alternativo ${formatMoney(savingsRule.minSavingsMinor, savingsRule.currency)}.` : ""}
-            {newLowRule?.active === false ? "" : " Também avisa um novo menor preço."}
+            Preço-alvo {formatMoney(rule.targetAmountMinor, rule.currency)}{" "}
+            {budgetScopeLabel(rule.scope)}.
+            {percentRule?.percentPoints
+              ? ` Queda de ${percentRule.percentPoints}%.`
+              : ""}
+            {savingsRule?.minSavingsMinor
+              ? ` Economia mínima no alternativo ${formatMoney(savingsRule.minSavingsMinor, savingsRule.currency)}.`
+              : ""}
+            {newLowRule?.active === false
+              ? ""
+              : " Também avisa um novo menor preço."}
           </p>
         ) : null}
         {erro ? <p className="notice notice-danger">{erro}</p> : null}
@@ -142,21 +225,44 @@ export default async function MonitorDetailPage({
       <section className="stat-grid">
         <article className="card">
           <h2>Próxima execução</h2>
-          <p>{monitor.status === "ACTIVE" ? formatDateTime(monitor.nextRunAt) : "Não há execução agendada neste estado."}</p>
-          <p className="muted">Intervalo fixo de {monitor.intervalHours} horas. O worker continua com o navegador fechado.</p>
+          <p>
+            {monitor.status === "ACTIVE"
+              ? formatDateTime(monitor.nextRunAt)
+              : "Não há execução agendada neste estado."}
+          </p>
+          <p className="muted">
+            Intervalo fixo de {monitor.intervalHours} horas. O worker continua
+            com o navegador fechado.
+          </p>
         </article>
         <article className="card">
           <h2>Última consulta bem-sucedida</h2>
-          <p>{lastSuccess ? formatDateTime(lastSuccess.finishedAt ?? lastSuccess.startedAt) : "Ainda não houve."}</p>
+          <p>
+            {lastSuccess
+              ? formatDateTime(lastSuccess.finishedAt ?? lastSuccess.startedAt)
+              : "Ainda não houve."}
+          </p>
         </article>
         <article className="card">
           <h2>Última tentativa</h2>
-          <p>{latest ? `${formatDateTime(latest.startedAt)} · ${runStatusLabel(latest.status)}` : "Ainda não houve."}</p>
+          <p>
+            {latest
+              ? `${formatDateTime(latest.startedAt)} · ${runStatusLabel(latest.status)}`
+              : "Ainda não houve."}
+          </p>
         </article>
       </section>
 
       {latest ? (
-        <p className={latest.status === "FAILED" ? "notice notice-danger" : latest.status === "PARTIAL" ? "notice notice-warn" : "notice"}>
+        <p
+          className={
+            latest.status === "FAILED"
+              ? "notice notice-danger"
+              : latest.status === "PARTIAL"
+                ? "notice notice-warn"
+                : "notice"
+          }
+        >
           {coverageMessage({
             status: latest.status,
             combinationsPlanned: latest.combinationsPlanned,
@@ -167,11 +273,21 @@ export default async function MonitorDetailPage({
           })}
         </p>
       ) : (
-        <p className="notice">A primeira consulta ainda não terminou. O servidor executa a rodada mesmo sem esta página aberta.</p>
+        <p className="notice">
+          A primeira consulta ainda não terminou. O servidor executa a rodada
+          mesmo sem esta página aberta.
+        </p>
       )}
       <p className="muted">
-        Combinações previstas agora: {planned}. Cada rodada consulta até {LIMITS.maxCombinationsPerRound}. A primeira etapa confirma combinações que já têm preço de demonstração ou atual. A segunda usa o que sobra da cota para datas e aeroportos ainda pouco consultados. Sem um calendário indicativo autorizado, a busca não inventa preço indicativo. Quando a rodada não cobre todas as combinações, o resultado é o menor preço entre as opções consultadas. Nesta última tentativa houve {charged} chamada
-        {charged === 1 ? "" : "s"} cobrada{charged === 1 ? "" : "s"} e {failures} falha{failures === 1 ? "" : "s"}.
+        Combinações previstas agora: {planned}. Cada rodada consulta até{" "}
+        {settings.roundLimit}. A primeira etapa confirma combinações que já têm
+        preço de demonstração ou atual. A segunda usa o que sobra da cota para
+        datas e aeroportos ainda pouco consultados. Sem um calendário indicativo
+        autorizado, a busca não inventa preço indicativo. Quando a rodada não
+        cobre todas as combinações, o resultado é o menor preço entre as opções
+        consultadas. Nesta última tentativa houve {charged} chamada
+        {charged === 1 ? "" : "s"} cobrada{charged === 1 ? "" : "s"} e{" "}
+        {failures} falha{failures === 1 ? "" : "s"}.
       </p>
 
       <OfferList
@@ -192,39 +308,61 @@ export default async function MonitorDetailPage({
           })),
         }}
       />
-      <HistoryPanel rows={currentObservations} filtersVersion={monitor.filtersVersion} title="Histórico destes critérios" />
+      <HistoryPanel
+        rows={currentObservations}
+        filtersVersion={monitor.filtersVersion}
+        title="Histórico destes critérios"
+      />
       <p className="muted">
-        Amostra compartilhada da rota {monitor.origins[0]} → {monitor.destinations[0]}, sem identificar quem pesquisou: {sharedSample} observações de demonstração.
-        {sharedSample < 5 ? " Histórico insuficiente na amostra compartilhada." : ""}
+        Amostra compartilhada da rota {monitor.origins[0]} →{" "}
+        {monitor.destinations[0]}, sem identificar quem pesquisou:{" "}
+        {sharedSample} observações do mesmo tipo de preço.
+        {sharedSample < 5
+          ? " Histórico insuficiente na amostra compartilhada."
+          : ""}
       </p>
       {previous.length > 0 ? (
         <details className="card">
           <summary>Critérios anteriores, em histórico separado</summary>
-          {[...new Set(previous.map((observation) => observation.filtersVersion).filter((version): version is number => version !== null))]
+          {[
+            ...new Set(
+              previous
+                .map((observation) => observation.filtersVersion)
+                .filter((version): version is number => version !== null),
+            ),
+          ]
             .sort((left, right) => right - left)
             .map((version) => (
               <HistoryPanel
                 key={version}
-                rows={previous.filter((observation) => observation.filtersVersion === version)}
+                rows={previous.filter(
+                  (observation) => observation.filtersVersion === version,
+                )}
                 filtersVersion={version}
                 title={`Critérios da versão ${version}`}
               />
             ))}
-          <p className="muted">Esses preços não entram na leitura dos critérios atuais.</p>
+          <p className="muted">
+            Esses preços não entram na leitura dos critérios atuais.
+          </p>
         </details>
       ) : null}
 
       <section className="card stack">
         <h2>Alertas</h2>
-        {monitor.notifications.length === 0 ? <p className="muted">Nenhum alerta deste monitoramento.</p> : null}
+        {monitor.notifications.length === 0 ? (
+          <p className="muted">Nenhum alerta deste monitoramento.</p>
+        ) : null}
         <ul className="plain-list">
           {monitor.notifications.map((notification) => (
             <li key={notification.id}>
               <strong>{notification.title}</strong>
               <p>{notification.body}</p>
               <p className="muted">
-                {notification.channel === "EMAIL" ? "E-mail registrado na caixa de saída. Não há servidor de e-mail." : "Alerta no site."} ·{" "}
-                {formatDateTime(notification.createdAt)}
+                {notification.channel === "EMAIL"
+                  ? "E-mail registrado na caixa de saída. Não há servidor de e-mail."
+                  : "Alerta no site."}{" "}
+                · {formatDateTime(notification.createdAt)}
               </p>
             </li>
           ))}
@@ -265,7 +403,8 @@ export default async function MonitorDetailPage({
           <ul className="plain-list">
             {monitor.revisions.map((revision) => (
               <li key={revision.id}>
-                Versão {revision.filtersVersion}: {revision.origins.join(", ")} → {revision.destinations.join(", ")}, {revision.adults} adultos,{" "}
+                Versão {revision.filtersVersion}: {revision.origins.join(", ")}{" "}
+                → {revision.destinations.join(", ")}, {revision.adults} adultos,{" "}
                 {revision.returnDate
                   ? `${formatCivilDate(isoFromUtcDate(revision.departDate))} a ${formatCivilDate(isoFromUtcDate(revision.returnDate))}`
                   : `somente ida em ${formatCivilDate(isoFromUtcDate(revision.departDate))}`}
@@ -307,7 +446,10 @@ export default async function MonitorDetailPage({
       {monitor.status === "ACTIVE" || monitor.status === "PAUSED" ? (
         <section className="stack">
           <h2>Alterar filtros</h2>
-          <p className="muted">Mudar a viagem cria uma versão nova. O histórico anterior continua guardado e não é misturado com o novo.</p>
+          <p className="muted">
+            Mudar a viagem cria uma versão nova. O histórico anterior continua
+            guardado e não é misturado com o novo.
+          </p>
           <TripForm
             key={`${monitor.id}-${monitor.filtersVersion}`}
             action={updateMonitorAction}

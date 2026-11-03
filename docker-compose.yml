@@ -22,6 +22,9 @@ services:
     environment:
       DATABASE_URL: postgresql://abud:abud@postgres:5432/abud?schema=public
       COOKIE_SECURE: "false"
+      FLIGHT_PROVIDER: ${FLIGHT_PROVIDER:-simulator}
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
+      SERPAPI_MONTHLY_SEARCH_LIMIT: ${SERPAPI_MONTHLY_SEARCH_LIMIT:-200}
       WORKER_POLL_MS: "5000"
     depends_on:
       postgres:
@@ -34,6 +37,9 @@ services:
     environment:
       DATABASE_URL: postgresql://abud:abud@postgres:5432/abud?schema=public
       WORKER_POLL_MS: "5000"
+      FLIGHT_PROVIDER: ${FLIGHT_PROVIDER:-simulator}
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
+      SERPAPI_MONTHLY_SEARCH_LIMIT: ${SERPAPI_MONTHLY_SEARCH_LIMIT:-200}
     depends_on:
       postgres:
         condition: service_healthy

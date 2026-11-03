@@ -11,7 +11,12 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "api:check": "node --env-file=.env.local --import tsx scripts/check-serpapi.ts",
+    "worker:local": "node --env-file=.env.local --import tsx src/worker/index.ts",
+    "api:flight": "node --env-file=.env.local --import tsx scripts/check-flight.ts",
+    "db:migrate:local": "node --env-file=.env.local node_modules/prisma/build/index.js migrate deploy",
+    "db:seed:local": "node --env-file=.env.local --import tsx prisma/seed.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

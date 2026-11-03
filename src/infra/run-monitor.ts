@@ -7,6 +7,7 @@ import type { MonitorCriteria } from "../domain/provider";
 import { failureRetryAt, isDue, nextRegularRun } from "../domain/schedule";
 import { isoFromUtcDate } from "../domain/dates";
 import { getProvider } from "../providers";
+import { providerSettings } from "../providers/settings";
 import { providerBudgetRemaining } from "./budget";
 import { prisma } from "./prisma";
 import { createPrismaStore } from "./prisma-store";
@@ -33,11 +34,16 @@ export function criteriaFromMonitor(monitor: Monitor): MonitorCriteria {
 }
 
 function rulesFrom(alertRules: AlertRule[]) {
-  return alertRules.filter((rule) => rule.active && rule.type !== "DAILY_DIGEST").map((rule) => toAlertRule(rule));
+  return alertRules
+    .filter((rule) => rule.active && rule.type !== "DAILY_DIGEST")
+    .map((rule) => toAlertRule(rule));
 }
 
-async function ensureNewLow(monitor: Monitor & { alertRules: AlertRule[] }): Promise<AlertRule[]> {
-  if (monitor.alertRules.some((rule) => rule.type === "NEW_LOW")) return monitor.alertRules;
+async function ensureNewLow(
+  monitor: Monitor & { alertRules: AlertRule[] },
+): Promise<AlertRule[]> {
+  if (monitor.alertRules.some((rule) => rule.type === "NEW_LOW"))
+    return monitor.alertRules;
   const created = await prisma.alertRule.create({
     data: {
       monitorId: monitor.id,
@@ -51,7 +57,11 @@ async function ensureNewLow(monitor: Monitor & { alertRules: AlertRule[] }): Pro
   return [...monitor.alertRules, created];
 }
 
-export async function runMonitor(id: string, workerId: string, now = new Date()): Promise<boolean> {
+export async function runMonitor(
+  id: string,
+  workerId: string,
+  now = new Date(),
+): Promise<boolean> {
   const lockCutoff = new Date(now.getTime() - LIMITS.lockTimeoutMs);
   const claimed = await prisma.monitor.updateMany({
     where: {
@@ -88,37 +98,45 @@ export async function runMonitor(id: string, workerId: string, now = new Date())
   }));
   const slot = monitor.pendingScheduledFor ?? monitor.nextRunAt;
   if (!monitor.pendingScheduledFor) {
-    await prisma.monitor.update({ where: { id }, data: { pendingScheduledFor: slot } });
+    await prisma.monitor.update({
+      where: { id },
+      data: { pendingScheduledFor: slot },
+    });
   }
 
   try {
-    const result = await executeRound(createPrismaStore(prisma), getProvider(), {
-      userId: monitor.userId,
-      monitorId: monitor.id,
-      filtersVersion: monitor.filtersVersion,
-      scheduledFor: slot.toISOString(),
-      requestKey: null,
-      criteria: criteriaFromMonitor(monitor),
-      cursor: monitor.explorationCursor,
-      limit: LIMITS.maxCombinationsPerRound,
-      alertRules: rulesFrom(alertRules),
-      now,
-      budgetRemainingMinor: await providerBudgetRemaining(now),
-      costPerSearchMinor: LIMITS.costPerSearchMinor,
-      maxAttempts: LIMITS.providerRetryAttempts,
-      priorSamples,
-      groundCosts: monitor.groundCosts.map((cost) => ({
-        airport: cost.airport,
-        transferMinor: cost.transferAmountMinor,
-        lodgingMinor: cost.lodgingAmountMinor,
-        feesMinor: cost.feesAmountMinor,
-        transferMinutes: cost.transferMinutes,
-      })),
-      extraBagAmountMinor: monitor.extraBagAmountMinor,
-      quietStartHour: monitor.user.quietStartHour,
-      quietEndHour: monitor.user.quietEndHour,
-      digestEnabled: monitor.user.digestEnabled,
-    });
+    const settings = providerSettings();
+    const result = await executeRound(
+      createPrismaStore(prisma),
+      getProvider(),
+      {
+        userId: monitor.userId,
+        monitorId: monitor.id,
+        filtersVersion: monitor.filtersVersion,
+        scheduledFor: slot.toISOString(),
+        requestKey: null,
+        criteria: criteriaFromMonitor(monitor),
+        cursor: monitor.explorationCursor,
+        limit: settings.roundLimit,
+        alertRules: rulesFrom(alertRules),
+        now,
+        budgetRemainingMinor: await providerBudgetRemaining(now),
+        costPerSearchMinor: settings.costPerSearchMinor,
+        maxAttempts: settings.maxAttempts,
+        priorSamples,
+        groundCosts: monitor.groundCosts.map((cost) => ({
+          airport: cost.airport,
+          transferMinor: cost.transferAmountMinor,
+          lodgingMinor: cost.lodgingAmountMinor,
+          feesMinor: cost.feesAmountMinor,
+          transferMinutes: cost.transferMinutes,
+        })),
+        extraBagAmountMinor: monitor.extraBagAmountMinor,
+        quietStartHour: monitor.user.quietStartHour,
+        quietEndHour: monitor.user.quietEndHour,
+        digestEnabled: monitor.user.digestEnabled,
+      },
+    );
 
     if (result.datesPassed) {
       await prisma.monitor.update({
@@ -134,7 +152,10 @@ export async function runMonitor(id: string, workerId: string, now = new Date())
       return true;
     }
 
-    if (result.status === "FAILED" && result.attempt < LIMITS.roundRetryAttempts) {
+    if (
+      result.status === "FAILED" &&
+      result.attempt < LIMITS.roundRetryAttempts
+    ) {
       await prisma.monitor.update({
         where: { id },
         data: {
@@ -163,13 +184,20 @@ export async function runMonitor(id: string, workerId: string, now = new Date())
   } catch (error) {
     await prisma.monitor.update({
       where: { id },
-      data: { lockedAt: null, lockedBy: null, nextRunAt: new Date(now.getTime() + 5 * 60 * 1000) },
+      data: {
+        lockedAt: null,
+        lockedBy: null,
+        nextRunAt: new Date(now.getTime() + 5 * 60 * 1000),
+      },
     });
     throw error;
   }
 }
 
-export async function runDueMonitors(workerId: string, now = new Date()): Promise<number> {
+export async function runDueMonitors(
+  workerId: string,
+  now = new Date(),
+): Promise<number> {
   await prisma.monitor.updateMany({
     where: { status: "ACTIVE", monitorUntil: { lt: now } },
     data: { status: "COMPLETED", lockedAt: null, lockedBy: null },
@@ -179,7 +207,10 @@ export async function runDueMonitors(workerId: string, now = new Date()): Promis
       status: "ACTIVE",
       nextRunAt: { lte: now },
       monitorUntil: { gte: now },
-      OR: [{ lockedAt: null }, { lockedAt: { lt: new Date(now.getTime() - LIMITS.lockTimeoutMs) } }],
+      OR: [
+        { lockedAt: null },
+        { lockedAt: { lt: new Date(now.getTime() - LIMITS.lockTimeoutMs) } },
+      ],
     },
     orderBy: { nextRunAt: "asc" },
     take: 10,

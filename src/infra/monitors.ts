@@ -1,12 +1,17 @@
 import { Prisma, type Monitor } from "@prisma/client";
 import { draftsForObservation, toAlertRule } from "../domain/alerts";
 import type { PriorSample } from "../domain/exploration";
-import { compareAlternate, quoteRoute, type AirportCost } from "../domain/trip-cost";
+import {
+  compareAlternate,
+  quoteRoute,
+  type AirportCost,
+} from "../domain/trip-cost";
 import { executeRound } from "../domain/execute-round";
 import { LIMITS } from "../domain/limits";
 import type { MonitorCriteria } from "../domain/provider";
 import { endOfSaoPauloDay, isoFromUtcDate } from "../domain/dates";
 import { getProvider } from "../providers";
+import { providerSettings } from "../providers/settings";
 import { providerBudgetRemaining } from "./budget";
 import { prisma } from "./prisma";
 import { createPrismaStore } from "./prisma-store";
@@ -33,7 +38,11 @@ export type MonitorDraft = {
   groundCosts: GroundCostDraft[];
 };
 
-function revisionData(monitorId: string, filtersVersion: number, criteria: MonitorCriteria) {
+function revisionData(
+  monitorId: string,
+  filtersVersion: number,
+  criteria: MonitorCriteria,
+) {
   return {
     monitorId,
     filtersVersion,
@@ -42,7 +51,9 @@ function revisionData(monitorId: string, filtersVersion: number, criteria: Monit
     dateMode: criteria.dateMode,
     tripType: criteria.tripType ?? "ROUND_TRIP",
     departDate: new Date(`${criteria.departDate}T00:00:00.000Z`),
-    returnDate: criteria.returnDate ? new Date(`${criteria.returnDate}T00:00:00.000Z`) : null,
+    returnDate: criteria.returnDate
+      ? new Date(`${criteria.returnDate}T00:00:00.000Z`)
+      : null,
     flexDays: criteria.flexDays,
     adults: criteria.adults,
     childAges: criteria.childAges,
@@ -56,10 +67,17 @@ function revisionData(monitorId: string, filtersVersion: number, criteria: Monit
   };
 }
 
-export async function createMonitor(userId: string, draft: MonitorDraft): Promise<Monitor> {
-  const active = await prisma.monitor.count({ where: { userId, status: "ACTIVE" } });
+export async function createMonitor(
+  userId: string,
+  draft: MonitorDraft,
+): Promise<Monitor> {
+  const active = await prisma.monitor.count({
+    where: { userId, status: "ACTIVE" },
+  });
   if (active >= LIMITS.maxActiveMonitorsPerUser) {
-    throw new Error(`Você já tem ${LIMITS.maxActiveMonitorsPerUser} monitoramentos ativos. Pause um para criar outro.`);
+    throw new Error(
+      `Você já tem ${LIMITS.maxActiveMonitorsPerUser} monitoramentos ativos. Pause um para criar outro.`,
+    );
   }
   const now = new Date();
   const monitor = await prisma.$transaction(async (tx) => {
@@ -73,7 +91,9 @@ export async function createMonitor(userId: string, draft: MonitorDraft): Promis
         dateMode: draft.criteria.dateMode,
         tripType: draft.criteria.tripType ?? "ROUND_TRIP",
         departDate: new Date(`${draft.criteria.departDate}T00:00:00.000Z`),
-        returnDate: draft.criteria.returnDate ? new Date(`${draft.criteria.returnDate}T00:00:00.000Z`) : null,
+        returnDate: draft.criteria.returnDate
+          ? new Date(`${draft.criteria.returnDate}T00:00:00.000Z`)
+          : null,
         flexDays: draft.criteria.flexDays,
         adults: draft.criteria.adults,
         childAges: draft.criteria.childAges,
@@ -91,7 +111,9 @@ export async function createMonitor(userId: string, draft: MonitorDraft): Promis
         extraBagAmountMinor: draft.extraBagAmountMinor,
       },
     });
-    await tx.monitorRevision.create({ data: revisionData(created.id, 1, draft.criteria) });
+    await tx.monitorRevision.create({
+      data: revisionData(created.id, 1, draft.criteria),
+    });
     await tx.alertRule.create({
       data: {
         monitorId: created.id,
@@ -140,7 +162,10 @@ export async function createMonitor(userId: string, draft: MonitorDraft): Promis
     }
     if (draft.groundCosts.length > 0) {
       await tx.groundCost.createMany({
-        data: draft.groundCosts.map((cost) => ({ monitorId: created.id, ...cost })),
+        data: draft.groundCosts.map((cost) => ({
+          monitorId: created.id,
+          ...cost,
+        })),
       });
     }
     return created;
@@ -153,8 +178,13 @@ export async function createMonitor(userId: string, draft: MonitorDraft): Promis
   return monitor;
 }
 
-export async function runAdhocSearch(userId: string, criteria: MonitorCriteria, requestKey: string) {
+export async function runAdhocSearch(
+  userId: string,
+  criteria: MonitorCriteria,
+  requestKey: string,
+) {
   const now = new Date();
+  const settings = providerSettings();
   return executeRound(createPrismaStore(prisma), getProvider(), {
     userId,
     monitorId: null,
@@ -163,12 +193,12 @@ export async function runAdhocSearch(userId: string, criteria: MonitorCriteria, 
     requestKey,
     criteria,
     cursor: 0,
-    limit: LIMITS.maxCombinationsPerRound,
+    limit: settings.roundLimit,
     alertRules: [],
     now,
     budgetRemainingMinor: await providerBudgetRemaining(now),
-    costPerSearchMinor: LIMITS.costPerSearchMinor,
-    maxAttempts: LIMITS.providerRetryAttempts,
+    costPerSearchMinor: settings.costPerSearchMinor,
+    maxAttempts: settings.maxAttempts,
   });
 }
 
@@ -181,7 +211,11 @@ async function syncOptionalRule(
   monitorId: string,
   type: "PERCENT_DROP" | "ALTERNATE_SAVINGS" | "NEW_LOW",
   currency: string,
-  data: { percentPoints?: number; minSavingsMinor?: number; active?: boolean } | null,
+  data: {
+    percentPoints?: number;
+    minSavingsMinor?: number;
+    active?: boolean;
+  } | null,
 ) {
   const existing = await tx.alertRule.findFirst({ where: { monitorId, type } });
   if (data === null) {
@@ -196,7 +230,8 @@ async function syncOptionalRule(
     percentPoints: data.percentPoints ?? null,
     minSavingsMinor: data.minSavingsMinor ?? null,
   };
-  if (existing) await tx.alertRule.update({ where: { id: existing.id }, data: next });
+  if (existing)
+    await tx.alertRule.update({ where: { id: existing.id }, data: next });
   else await tx.alertRule.create({ data: { monitorId, type, ...next } });
 }
 
@@ -221,13 +256,23 @@ function sameCriteria(monitor: Monitor, criteria: MonitorCriteria): boolean {
   );
 }
 
-export async function updateMonitor(userId: string, monitorId: string, draft: MonitorDraft): Promise<void> {
+export async function updateMonitor(
+  userId: string,
+  monitorId: string,
+  draft: MonitorDraft,
+): Promise<void> {
   const monitor = await getMonitorForUser(userId, monitorId);
-  if (!monitor || monitor.status === "CANCELLED" || monitor.status === "COMPLETED") {
+  if (
+    !monitor ||
+    monitor.status === "CANCELLED" ||
+    monitor.status === "COMPLETED"
+  ) {
     throw new Error("Monitoramento não encontrado.");
   }
   const criteriaChanged = !sameCriteria(monitor, draft.criteria);
-  const rules = await prisma.alertRule.findMany({ where: { monitorId: monitor.id } });
+  const rules = await prisma.alertRule.findMany({
+    where: { monitorId: monitor.id },
+  });
   const currentRule = rules.find((rule) => rule.type === "TARGET_PRICE");
   const percentRule = rules.find((rule) => rule.type === "PERCENT_DROP");
   const savingsRule = rules.find((rule) => rule.type === "ALTERNATE_SAVINGS");
@@ -244,7 +289,9 @@ export async function updateMonitor(userId: string, monitorId: string, draft: Mo
     newLowRule?.active !== draft.newLow;
   const now = new Date();
   await prisma.$transaction(async (tx) => {
-    const nextVersion = criteriaChanged ? monitor.filtersVersion + 1 : monitor.filtersVersion;
+    const nextVersion = criteriaChanged
+      ? monitor.filtersVersion + 1
+      : monitor.filtersVersion;
     await tx.monitor.update({
       where: { id: monitor.id },
       data: {
@@ -254,7 +301,9 @@ export async function updateMonitor(userId: string, monitorId: string, draft: Mo
         dateMode: draft.criteria.dateMode,
         tripType: draft.criteria.tripType ?? "ROUND_TRIP",
         departDate: new Date(`${draft.criteria.departDate}T00:00:00.000Z`),
-        returnDate: draft.criteria.returnDate ? new Date(`${draft.criteria.returnDate}T00:00:00.000Z`) : null,
+        returnDate: draft.criteria.returnDate
+          ? new Date(`${draft.criteria.returnDate}T00:00:00.000Z`)
+          : null,
         flexDays: draft.criteria.flexDays,
         adults: draft.criteria.adults,
         childAges: draft.criteria.childAges,
@@ -268,7 +317,9 @@ export async function updateMonitor(userId: string, monitorId: string, draft: Mo
         monitorUntil: endOfSaoPauloDay(draft.monitorUntil),
         filtersVersion: nextVersion,
         explorationCursor: criteriaChanged ? 0 : monitor.explorationCursor,
-        pendingScheduledFor: criteriaChanged ? null : monitor.pendingScheduledFor,
+        pendingScheduledFor: criteriaChanged
+          ? null
+          : monitor.pendingScheduledFor,
         nextRunAt: criteriaChanged ? now : monitor.nextRunAt,
         lockedAt: null,
         lockedBy: null,
@@ -276,7 +327,9 @@ export async function updateMonitor(userId: string, monitorId: string, draft: Mo
       },
     });
     if (criteriaChanged) {
-      await tx.monitorRevision.create({ data: revisionData(monitor.id, nextVersion, draft.criteria) });
+      await tx.monitorRevision.create({
+        data: revisionData(monitor.id, nextVersion, draft.criteria),
+      });
     }
     await tx.alertRule.updateMany({
       where: { monitorId: monitor.id, type: "TARGET_PRICE" },
@@ -287,13 +340,34 @@ export async function updateMonitor(userId: string, monitorId: string, draft: Mo
         active: true,
       },
     });
-    await syncOptionalRule(tx, monitor.id, "PERCENT_DROP", draft.criteria.currency, draft.percentPoints === null ? null : { percentPoints: draft.percentPoints });
-    await syncOptionalRule(tx, monitor.id, "ALTERNATE_SAVINGS", draft.criteria.currency, draft.minSavingsMinor === null ? null : { minSavingsMinor: draft.minSavingsMinor });
-    await syncOptionalRule(tx, monitor.id, "NEW_LOW", draft.criteria.currency, { active: draft.newLow });
+    await syncOptionalRule(
+      tx,
+      monitor.id,
+      "PERCENT_DROP",
+      draft.criteria.currency,
+      draft.percentPoints === null
+        ? null
+        : { percentPoints: draft.percentPoints },
+    );
+    await syncOptionalRule(
+      tx,
+      monitor.id,
+      "ALTERNATE_SAVINGS",
+      draft.criteria.currency,
+      draft.minSavingsMinor === null
+        ? null
+        : { minSavingsMinor: draft.minSavingsMinor },
+    );
+    await syncOptionalRule(tx, monitor.id, "NEW_LOW", draft.criteria.currency, {
+      active: draft.newLow,
+    });
     await tx.groundCost.deleteMany({ where: { monitorId: monitor.id } });
     if (draft.groundCosts.length > 0) {
       await tx.groundCost.createMany({
-        data: draft.groundCosts.map((cost) => ({ monitorId: monitor.id, ...cost })),
+        data: draft.groundCosts.map((cost) => ({
+          monitorId: monitor.id,
+          ...cost,
+        })),
       });
     }
   });
@@ -308,7 +382,11 @@ export async function updateMonitor(userId: string, monitorId: string, draft: Mo
   if (targetChanged) await notifyCurrentOffers(userId, monitorId);
 }
 
-export async function setMonitorStatus(userId: string, monitorId: string, status: "ACTIVE" | "PAUSED" | "CANCELLED") {
+export async function setMonitorStatus(
+  userId: string,
+  monitorId: string,
+  status: "ACTIVE" | "PAUSED" | "CANCELLED",
+) {
   const monitor = await getMonitorForUser(userId, monitorId);
   if (!monitor) throw new Error("Monitoramento não encontrado.");
   if (monitor.status === "CANCELLED" || monitor.status === "COMPLETED") {
@@ -321,7 +399,10 @@ export async function setMonitorStatus(userId: string, monitorId: string, status
       status,
       lockedAt: null,
       lockedBy: null,
-      nextRunAt: status === "ACTIVE" && monitor.nextRunAt.getTime() < now.getTime() ? now : monitor.nextRunAt,
+      nextRunAt:
+        status === "ACTIVE" && monitor.nextRunAt.getTime() < now.getTime()
+          ? now
+          : monitor.nextRunAt,
     },
   });
   if (status === "ACTIVE") {
@@ -352,7 +433,11 @@ export async function notifyCurrentOffers(userId: string, monitorId: string) {
       include: { itinerary: true },
     }),
     prisma.priceObservation.findMany({
-      where: { monitorId, filtersVersion: monitor.filtersVersion, searchRunId: { not: latest.id } },
+      where: {
+        monitorId,
+        filtersVersion: monitor.filtersVersion,
+        searchRunId: { not: latest.id },
+      },
       orderBy: { sourceCollectedAt: "asc" },
       take: 500,
     }),
@@ -394,14 +479,19 @@ export async function notifyCurrentOffers(userId: string, monitorId: string) {
         sample.destination === observation.destination,
     );
     const kindPrior = priorSamples.filter(
-      (sample) => sample.currency === observation.currency && sample.priceKind === observation.priceKind,
+      (sample) =>
+        sample.currency === observation.currency &&
+        sample.priceKind === observation.priceKind,
     );
     const previous = routePrior.at(-1);
     const primaryOrigin = monitor.origins[0];
     const primaryDestination = monitor.destinations[0];
     let netSavingsMinor: number | null = null;
     let extraMinutes: number | null = null;
-    if (observation.origin !== primaryOrigin || observation.destination !== primaryDestination) {
+    if (
+      observation.origin !== primaryOrigin ||
+      observation.destination !== primaryDestination
+    ) {
       const primary = seen
         .filter(
           (item) =>
@@ -410,7 +500,9 @@ export async function notifyCurrentOffers(userId: string, monitorId: string) {
             item.currency === observation.currency &&
             item.priceKind !== "LIVE_INDICATIVE",
         )
-        .sort((left, right) => left.totalAmountMinor - right.totalAmountMinor)[0];
+        .sort(
+          (left, right) => left.totalAmountMinor - right.totalAmountMinor,
+        )[0];
       if (primary && observation.priceKind !== "LIVE_INDICATIVE") {
         const compared = compareAlternate(
           quoteRoute({
@@ -461,12 +553,16 @@ export async function notifyCurrentOffers(userId: string, monitorId: string) {
         baggageIncluded: observation.baggageIncluded,
         checkedBags: observation.checkedBags,
       },
-      rules: monitor.alertRules.filter((rule) => rule.type !== "DAILY_DIGEST").map((rule) => toAlertRule(rule)),
+      rules: monitor.alertRules
+        .filter((rule) => rule.type !== "DAILY_DIGEST")
+        .map((rule) => toAlertRule(rule)),
       userId,
       monitorId,
       context: {
         previousAmountMinor: previous?.totalAmountMinor ?? null,
-        lowestAmountMinor: kindPrior.length ? Math.min(...kindPrior.map((sample) => sample.totalAmountMinor)) : null,
+        lowestAmountMinor: kindPrior.length
+          ? Math.min(...kindPrior.map((sample) => sample.totalAmountMinor))
+          : null,
         netSavingsMinor,
         extraMinutes,
         now: new Date(),
@@ -479,7 +575,11 @@ export async function notifyCurrentOffers(userId: string, monitorId: string) {
       try {
         await prisma.notification.create({ data: draft });
       } catch (error) {
-        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
+        if (
+          !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+          error.code !== "P2002"
+        )
+          throw error;
       }
     }
   }

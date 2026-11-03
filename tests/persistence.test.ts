@@ -8,7 +8,11 @@ import { createPrismaStore } from "../src/infra/prisma-store";
 import { createMonitor, getMonitorForUser } from "../src/infra/monitors";
 import { runMonitor } from "../src/infra/run-monitor";
 
-const describeIf = process.env.DATABASE_URL ? describe : describe.skip;
+// These tests delete their fixtures. Never run them implicitly against an application database.
+const describeIf =
+  process.env.RUN_DATABASE_TESTS === "true" && process.env.DATABASE_URL
+    ? describe
+    : describe.skip;
 
 async function reset() {
   await prisma.notification.deleteMany();
@@ -55,8 +59,12 @@ describeIf("persistência no Postgres", () => {
   });
 
   it("mantém o monitoramento para outro cliente e esconde da outra conta", async () => {
-    const owner = await prisma.user.create({ data: { email: "ana@example.com", name: "Ana", passwordHash: "x" } });
-    const other = await prisma.user.create({ data: { email: "bia@example.com", name: "Bia", passwordHash: "x" } });
+    const owner = await prisma.user.create({
+      data: { email: "ana@example.com", name: "Ana", passwordHash: "x" },
+    });
+    const other = await prisma.user.create({
+      data: { email: "bia@example.com", name: "Bia", passwordHash: "x" },
+    });
     const created = await createMonitor(owner.id, {
       criteria,
       name: "Lisboa",
@@ -74,26 +82,50 @@ describeIf("persistência no Postgres", () => {
     const again = await fresh.monitor.findUnique({ where: { id: created.id } });
     expect(again?.status).toBe("ACTIVE");
     expect(again?.userId).toBe(owner.id);
-    expect(isDue({ ...again!, lockedAt: again!.lockedAt }, new Date("2026-11-15T00:00:00.000Z"))).toBe(true);
-    expect(await fresh.priceObservation.count({ where: { monitorId: created.id } })).toBeGreaterThan(0);
+    expect(
+      isDue(
+        { ...again!, lockedAt: again!.lockedAt },
+        new Date("2026-11-15T00:00:00.000Z"),
+      ),
+    ).toBe(true);
+    expect(
+      await fresh.priceObservation.count({ where: { monitorId: created.id } }),
+    ).toBeGreaterThan(0);
     expect(await getMonitorForUser(other.id, created.id)).toBeNull();
     expect(await getMonitorForUser(owner.id, created.id)).not.toBeNull();
 
-    const beforeObservations = await prisma.priceObservation.count({ where: { monitorId: created.id } });
-    const beforeAlerts = await prisma.notification.count({ where: { monitorId: created.id } });
-    const run = await prisma.searchRun.findFirst({ where: { monitorId: created.id } });
+    const beforeObservations = await prisma.priceObservation.count({
+      where: { monitorId: created.id },
+    });
+    const beforeAlerts = await prisma.notification.count({
+      where: { monitorId: created.id },
+    });
+    const run = await prisma.searchRun.findFirst({
+      where: { monitorId: created.id },
+    });
     await prisma.monitor.update({
       where: { id: created.id },
-      data: { nextRunAt: new Date(), pendingScheduledFor: run?.scheduledFor, lockedAt: null, lockedBy: null },
+      data: {
+        nextRunAt: new Date(),
+        pendingScheduledFor: run?.scheduledFor,
+        lockedAt: null,
+        lockedBy: null,
+      },
     });
     await runMonitor(created.id, "test-worker");
-    expect(await prisma.priceObservation.count({ where: { monitorId: created.id } })).toBe(beforeObservations);
-    expect(await prisma.notification.count({ where: { monitorId: created.id } })).toBe(beforeAlerts);
+    expect(
+      await prisma.priceObservation.count({ where: { monitorId: created.id } }),
+    ).toBe(beforeObservations);
+    expect(
+      await prisma.notification.count({ where: { monitorId: created.id } }),
+    ).toBe(beforeAlerts);
     await fresh.$disconnect();
   });
 
   it("grava moeda original e bagagem desconhecida sem tratar falha como ausência de voos", async () => {
-    const user = await prisma.user.create({ data: { email: "caro@example.com", name: "Caro", passwordHash: "x" } });
+    const user = await prisma.user.create({
+      data: { email: "caro@example.com", name: "Caro", passwordHash: "x" },
+    });
     const store = createPrismaStore(prisma);
     const eur: FlightProvider = {
       id: "stub",
@@ -150,7 +182,9 @@ describeIf("persistência no Postgres", () => {
       sleep: async () => {},
       maxAttempts: 2,
     });
-    const saved = await prisma.priceObservation.findFirst({ where: { userId: user.id } });
+    const saved = await prisma.priceObservation.findFirst({
+      where: { userId: user.id },
+    });
     expect(saved?.currency).toBe("EUR");
     expect(saved?.totalAmountMinor).toBe(32_150);
     expect(saved?.convertedAmountMinor).toBeNull();
@@ -164,7 +198,10 @@ describeIf("persistência no Postgres", () => {
       ...eur,
       async search() {
         const { ProviderError } = await import("../src/domain/provider");
-        throw new ProviderError("timeout", { temporary: true, code: "TIMEOUT" });
+        throw new ProviderError("timeout", {
+          temporary: true,
+          code: "TIMEOUT",
+        });
       },
     };
     const failed = await executeRound(store, failing, {
@@ -185,8 +222,14 @@ describeIf("persistência no Postgres", () => {
     });
     expect(failed.status).toBe("FAILED");
     expect(failed.status).not.toBe("NO_OFFERS");
-    const failedRun = await prisma.searchRun.findUnique({ where: { id: failed.runId } });
+    const failedRun = await prisma.searchRun.findUnique({
+      where: { id: failed.runId },
+    });
     expect(failedRun?.status).toBe("FAILED");
-    expect(await prisma.priceObservation.count({ where: { searchRunId: failed.runId } })).toBe(0);
+    expect(
+      await prisma.priceObservation.count({
+        where: { searchRunId: failed.runId },
+      }),
+    ).toBe(0);
   });
 });
